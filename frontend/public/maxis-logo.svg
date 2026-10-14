@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 62" width="208" height="62" role="img" aria-label="MAXIS">
+  <title>MAXIS</title>
+  <defs>
+    <linearGradient id="maxisWave" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2ecf17"/>
+      <stop offset="1" stop-color="#1fcf04"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(0 7)">
+    <rect x="0" y="0" width="48" height="48" rx="14" fill="#2b3e8d"/>
+    <g fill="none" stroke="url(#maxisWave)" stroke-width="4" stroke-linecap="round">
+      <path d="M11 17c6.5-6.5 13-5.5 20.5 0"/>
+      <path d="M11 25c6.5-6.5 13-5.5 20.5 0"/>
+      <path d="M11 33c6.5-6.5 13-5.5 20.5 0"/>
+    </g>
+    <circle cx="38.5" cy="12" r="3.5" fill="#1fcf04"/>
+  </g>
+  <text x="60" y="47" font-family="'Manrope','DM Sans','Helvetica Neue',Helvetica,Arial,sans-serif"
+        font-size="46" font-weight="700" letter-spacing="-2.4" fill="#2b3e8d">maxis<tspan fill="#1fcf04">.</tspan></text>
+</svg>
