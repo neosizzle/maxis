@@ -13,7 +13,7 @@ const formatDate = (date: string) => new Date(date).toLocaleString('en-MY', { ti
 const equipmentName = (id: EquipmentId) => equipment.find(item => item.id === id)?.label ?? id;
 const readingText = (reading: MetricReading, digits = 2) => reading.value === null ? '—' : reading.value.toFixed(digits);
 type Feedback = { ok: boolean; message: string; field?: string };
-const chartColors = { water: '#3478f6', filtered: '#21b8d5', baseline: '#7d8996', warning: '#985e00', text: '#52606d', grid: '#e5e9ee' };
+const chartColors = { water: '#2b3e8d', filtered: '#1fcf04', baseline: '#5a67a9', warning: '#985e00', text: '#4b5684', grid: '#e5e7ee' };
 const maintenanceTabs = [{ id: 'tasks', label: 'Service tasks', icon: ClipboardList }, { id: 'inventory', label: 'Inventory', icon: Package }, { id: 'orders', label: 'Supply orders', icon: ShoppingCart }, { id: 'records', label: 'Activity & incidents', icon: Clock3 }] as const;
 const required = <span className="required-marker" aria-hidden="true"> *</span>;
 const positiveQuantityError = (value: string) => !Number.isInteger(Number(value)) || Number(value) <= 0 ? 'Enter a positive whole-number quantity, such as 1 or 2.' : '';
