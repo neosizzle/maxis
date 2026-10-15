@@ -3983,3 +3983,36 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .topbar .avatar { background: var(--brand-indigo); border-color: var(--brand-indigo-deep); }
 .topbar .notification-button i { background: var(--brand-green-bright); }
 .skip-link { background: var(--brand-indigo); color: var(--brand-white); }
+
+/* Maintenance workspace: the tab strip and feedback banner sit directly in the
+   panel, so give them the same inset as the header and body for one left edge. */
+.workflow-panel { --workflow-inset: 22px; }
+.workflow-panel > .panel-header { padding-left: var(--workflow-inset); padding-right: var(--workflow-inset); }
+.workflow-panel > .workflow-tabs { padding-left: var(--workflow-inset); padding-right: var(--workflow-inset); }
+.workflow-panel > .inline-feedback { margin-left: var(--workflow-inset); margin-right: var(--workflow-inset); }
+@media(max-width:760px) { .workflow-panel { --workflow-inset: 16px; } }
+
+/* Form rows mix fields that carry a hint/error line with fields that don't, so
+   bottom-aligning them floated every hinted control above its neighbour. Align
+   on the label row instead -- message height then never shifts a control -- and
+   offset the buttons by that same row so they stay on the control line. */
+.workflow-panel :is(.form-grid, .form-row) {
+  /* one line of the field label (14px x 1.4) plus the field's row gap */
+  --field-label-row: calc(14px * 1.4 + 7px);
+  align-items: start;
+}
+.workflow-panel :is(.form-grid, .form-row) > .button {
+  margin-top: var(--field-label-row);
+  min-height: 45px;
+}
+.workflow-panel .field > :is(input, select) { min-height: 45px; }
+/* The offset above only makes sense while the button still shares the control
+   line. Two fields plus the button stop fitting at ~525px, and a button that
+   wraps on its own carries the label-row offset down with it, leaving a gap
+   above it. Stack it deliberately just above that point and drop the offset. */
+@media(max-width:560px) {
+  .workflow-panel :is(.form-grid, .form-row) > .button {
+    margin-top: 0;
+    flex-basis: 100%;
+  }
+}
