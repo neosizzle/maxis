@@ -51,11 +51,7 @@ const names: Record<EquipmentId, string> = {
 };
 
 const tones: Record<EquipmentStatus, string> = {
-  normal: '#00f0ff',
-  warning: '#f59e0b',
-  critical: '#ef4444',
-  offline: '#94a3b8',
-  stopped: '#64748b',
+  normal: '#2b3e8d', warning: '#d89519', critical: '#e35f50', offline: '#878c9b', stopped: '#67708d',
 };
 
 const ids: EquipmentId[] = ['tank', 'pump', 'membrane', 'uv', 'solar', 'mains', 'homes'];
@@ -80,19 +76,11 @@ const boundingBoxes: Record<EquipmentId, [number, number, number]> = {
   mains: [2.0, 1.8, 1.6],
   homes: [4.6, 3.8, 4.4],
 };
-
-const calloutOffsets: Record<EquipmentId, [number, number, number]> = {
-  tank: [-0.8, 4.0, 0.6],
-  pump: [-0.5, 2.4, 1.2],
-  membrane: [-0.4, 3.4, 0.7],
-  uv: [0.4, 2.6, 0.8],
-  solar: [-0.8, 3.2, -3.2],
-  mains: [0.6, 2.7, -2.6],
-  homes: [1.0, 4.5, 1.4],
-};
-
-const cameraPosition: [number, number, number] = [15, 14, 18];
-
+const cameraPosition: [number, number, number] = [13, 12, 17];
+const baseStyle = { fontFamily: 'inherit', border: '1px solid #d0d3df', borderRadius: 9, padding: '8px 12px', minHeight: 40, background: '#ffffff', color: '#33394d', fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7 };
+const textTones: Record<EquipmentStatus, string> = { normal: '#223272', warning: '#875504', critical: '#a73327', offline: '#53586b', stopped: '#464e6b' };
+// The same words again for the equipment list, which renders on the dark skin.
+const listTones: Record<EquipmentStatus, string> = { normal: '#7fe06d', warning: '#f0c070', critical: '#f0a097', offline: '#aab2c8', stopped: '#b9bfd8' };
 type CameraAction = 'left' | 'right' | 'up' | 'down' | 'in' | 'out' | 'reset';
 type CameraRequest = { action: CameraAction; sequence: number };
 const defaultCameraRequest: CameraRequest = { action: 'reset', sequence: 0 };
@@ -136,169 +124,7 @@ class SceneBoundary extends Component<
   }
 }
 
-/* =========================================================================
-   ELECTRIC CYAN / BLUE HOLOGRAPHIC HIGHLIGHTING & LEADER LINE (Picture 2)
-   ========================================================================= */
-function HologramHighlight({
-  id,
-  status,
-  selected,
-  animate,
-}: {
-  id: EquipmentId;
-  status: EquipmentStatus;
-  selected: boolean;
-  animate: boolean;
-}) {
-  const [w, h, d] = boundingBoxes[id];
-  const cageRef = useRef<THREE.Group>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
-  const glowMat = useRef<THREE.MeshBasicMaterial>(null);
-
-  const highlightColor = status === 'critical' ? '#ef4444' : status === 'warning' ? '#f59e0b' : '#00f0ff';
-
-  useFrame(({ clock }) => {
-    if (!selected) return;
-    const t = clock.elapsedTime;
-    if (ringRef.current) {
-      const pulse = Math.sin(t * 3.5) * 0.15 + 0.85;
-      ringRef.current.scale.set(pulse, pulse, 1);
-    }
-    if (glowMat.current && animate) {
-      glowMat.current.opacity = 0.55 + Math.sin(t * 4) * 0.25;
-    }
-  });
-
-  if (!selected) return null;
-
-  return (
-    <group ref={cageRef} position={[0, 0, 0]}>
-      {/* 1. Hologram Ground Target Footprint Ring */}
-      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
-        <ringGeometry args={[Math.max(w, d) * 0.55, Math.max(w, d) * 0.55 + 0.14, 48]} />
-        <meshBasicMaterial color={highlightColor} transparent opacity={0.85} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.038, 0]}>
-        <circleGeometry args={[Math.max(w, d) * 0.54, 48]} />
-        <meshBasicMaterial color={highlightColor} transparent opacity={0.12} side={THREE.DoubleSide} />
-      </mesh>
-
-      {/* 2. Glowing Electric Holographic Wireframe Cage (Edges of the asset, matching Picture 2) */}
-      <mesh position={[0, h / 2 + 0.06, 0]}>
-        <boxGeometry args={[w + 0.18, h + 0.16, d + 0.18]} />
-        <meshBasicMaterial ref={glowMat} color={highlightColor} wireframe transparent opacity={0.75} />
-      </mesh>
-
-      {/* 3. Subtle Cyan Glow Shell */}
-      <mesh position={[0, h / 2 + 0.06, 0]}>
-        <boxGeometry args={[w + 0.16, h + 0.14, d + 0.16]} />
-        <meshBasicMaterial color={highlightColor} transparent opacity={0.06} side={THREE.DoubleSide} depthWrite={false} />
-      </mesh>
-
-      {/* 4. Vertical Cyan Beacon Beam & Top Anchor Node Node */}
-      <mesh position={[0, h + 0.2, 0]}>
-        <sphereGeometry args={[0.09, 16, 16]} />
-        <meshBasicMaterial color={highlightColor} />
-      </mesh>
-    </group>
-  );
-}
-
-/* =========================================================================
-   IN-SCENE 3D FLOATING CALLOUT CARD (Picture 2)
-   ========================================================================= */
-function FloatingCalloutCard({
-  id,
-  snapshot,
-  onSelect,
-}: {
-  id: EquipmentId;
-  snapshot: Snapshot;
-  onSelect: (id: string) => void;
-}) {
-  const meta = ASSET_METADATA[id] || ASSET_METADATA.homes;
-  const status = snapshot.equipment[id]?.status || 'normal';
-  const pos = calloutOffsets[id];
-
-  const primaryKey = meta.primaryMetric;
-  const primaryMetric = snapshot.metrics[primaryKey];
-  const primaryVal = primaryMetric?.value !== null && primaryMetric?.value !== undefined ? primaryMetric.value.toFixed(1) : '—';
-  const primaryUnit = primaryMetric?.unit || '';
-
-  const secondaryKey = meta.secondaryMetric;
-  const secondaryMetric = secondaryKey ? snapshot.metrics[secondaryKey] : null;
-  const secondaryVal = secondaryMetric?.value !== null && secondaryMetric?.value !== undefined ? secondaryMetric.value.toFixed(1) : '—';
-  const secondaryUnit = secondaryMetric?.unit || '';
-
-  const statusLabel =
-    status === 'critical' ? 'System Fault' : status === 'warning' ? 'Elevated ΔP' : 'System Nominal';
-
-  return (
-    <Html position={pos} center zIndexRange={[100, 20]} style={{ pointerEvents: 'none' }}>
-      <div className="scene-callout-card" style={{ pointerEvents: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div className="scene-callout-pointer-dot" />
-        <div className="scene-callout-header">
-          <div className="scene-callout-title">
-            <strong>{meta.name}</strong>
-            <span className="scene-callout-asset-id">(asset {meta.tag})</span>
-          </div>
-          <span className={`scene-callout-status-pill ${status}`}>
-            <span className="callout-status-dot" />
-            {statusLabel}
-          </span>
-        </div>
-
-        <div className="scene-callout-specs">
-          <div className="scene-callout-spec-row">
-            <span className="spec-label">
-              {primaryKey === 'turbidityOut'
-                ? 'Outlet Turbidity:'
-                : primaryKey === 'tankLevel'
-                ? 'Storage Level:'
-                : primaryKey === 'flow'
-                ? 'Supply Flow:'
-                : 'Power Draw:'}
-            </span>
-            <span className="spec-val">
-              {primaryVal} {primaryUnit} <small className="spec-trend">(Rising)</small>
-            </span>
-          </div>
-          <div className="scene-callout-spec-row">
-            <span className="spec-label">Operating State:</span>
-            <span className="spec-val">
-              {snapshot.stopped ? 'PAUSED' : 'AUTO (100%)'}
-            </span>
-          </div>
-          <div className="scene-callout-spec-row">
-            <span className="spec-label">System Pressure:</span>
-            <span className="spec-val">
-              {snapshot.metrics.pressureDelta.value !== null
-                ? `${(snapshot.metrics.pressureDelta.value + 3.8).toFixed(1)} Bar`
-                : '4.5 Bar'}
-            </span>
-          </div>
-        </div>
-      </div>
-    </Html>
-  );
-}
-
-/* =========================================================================
-   REALISTIC WATER PIPES WITH GLOWING FLOW BEADS
-   ========================================================================= */
-function Pipe({
-  points,
-  active,
-  animate,
-  color = '#00f0ff',
-  speed = 0.05,
-}: {
-  points: [number, number, number][];
-  active: boolean;
-  animate: boolean;
-  color?: string;
-  speed?: number;
-}) {
+function Pipe({ points, active, animate, color = '#4260c8', speed = 0.045 }: { points: [number, number, number][]; active: boolean; animate: boolean; color?: string; speed?: number }) {
   const curve = useMemo(() => {
     const vectors = points.map(p => new THREE.Vector3(...p));
     const path = new THREE.CurvePath<THREE.Vector3>();
@@ -331,32 +157,12 @@ function Pipe({
       mesh?.position.copy(curve.getPointAt((phase.current + i / 8) % 1))
     );
   });
-
-  return (
-    <group>
-      <mesh geometry={geometry} castShadow receiveShadow>
-        <meshStandardMaterial
-          color={active ? '#38bdf8' : '#94a3b8'}
-          metalness={0.7}
-          roughness={0.2}
-          envMapIntensity={1.2}
-        />
-      </mesh>
-      {active &&
-        Array.from({ length: 8 }, (_, i) => (
-          <mesh
-            key={i}
-            ref={node => {
-              markers.current[i] = node;
-            }}
-            position={curve.getPointAt(i / 8)}
-          >
-            <sphereGeometry args={[0.11, 12, 10]} />
-            <meshBasicMaterial color={color === '#00f0ff' ? '#dff9ff' : '#fef08a'} />
-          </mesh>
-        ))}
-    </group>
-  );
+  return <group>
+    <mesh geometry={geometry} castShadow><meshStandardMaterial color={active ? color : '#b7bbc8'} roughness={0.35} metalness={0.25} /></mesh>
+    {active && Array.from({ length: 7 }, (_, i) => <mesh key={i} ref={node => { markers.current[i] = node; }} position={curve.getPointAt(i / 7)}>
+      <sphereGeometry args={[0.105, 10, 8]} /><meshBasicMaterial color={color === '#4260c8' ? '#d5dfff' : '#ffeb9f'} />
+    </mesh>)}
+  </group>;
 }
 
 /* =========================================================================
@@ -380,162 +186,117 @@ function EquipmentTarget({
   snapshot: Snapshot;
 }) {
   const [hovered, setHovered] = useState(false);
-
-  return (
-    <group
-      position={positions[id]}
-      onClick={e => {
-        e.stopPropagation();
-        onSelect(id);
-      }}
-      onPointerOver={e => {
-        e.stopPropagation();
-        setHovered(true);
-      }}
-      onPointerOut={() => setHovered(false)}
-    >
-      {/* Hologram Highlight Wireframe & Footprint (Picture 2) */}
-      <HologramHighlight id={id} status={status} selected={selected || hovered} animate={animate} />
-
-      {/* Realistic 3D Model Children */}
-      {children}
-
-      {/* Floating In-Scene Callout Card when Selected (Picture 2) */}
-      {selected && <FloatingCalloutCard id={id} snapshot={snapshot} onSelect={onSelect} />}
-    </group>
-  );
+  const halo=useRef<THREE.Mesh>(null);const haloMaterial=useRef<THREE.MeshBasicMaterial>(null);
+  const radius = id === 'tank' ? 1.42 : id === 'solar' ? 1.85 : id === 'homes' ? 2 : 1.2;
+  const hasFault=status==='warning'||status==='critical';
+  const attention=status==='warning'||status==='critical'||status==='offline';
+  const ringColor=attention?tones[status]:'#2b3e8d';
+  useFrame(({clock})=>{
+    if(!halo.current||!haloMaterial.current)return;
+    if(hasFault&&animate){const pulse=(Math.sin(clock.elapsedTime*3.2)+1)/2;haloMaterial.current.opacity=.42+pulse*.42;halo.current.scale.setScalar(1+pulse*.035);}
+    else{haloMaterial.current.opacity=.82;halo.current.scale.setScalar(1);}
+  });
+  const compactIndex=compact&&!selected&&!hovered&&!attention;
+  const labelBackground=status==='critical'?'#ffe5e1':status==='warning'?'#fff2d7':status==='offline'?'#e9ebf2':selected?'#ebeefe':'rgba(255,255,255,.97)';
+  const labelColor=status==='critical'?'#852b24':status==='warning'?'#71500d':status==='offline'?'#43495d':'#1b2450';
+  return <group position={positions[id]} onClick={e => { e.stopPropagation(); onSelect(id); }}
+    onPointerOver={e => { e.stopPropagation(); setHovered(true); }} onPointerOut={() => setHovered(false)}>
+    {(selected || hovered || attention) && <mesh ref={halo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]}>
+      <ringGeometry args={[radius, radius + (hasFault ? 0.11 : 0.07), 64]} /><meshBasicMaterial ref={haloMaterial} color={ringColor} transparent opacity={0.85} side={THREE.DoubleSide} />
+    </mesh>}
+    {children}
+    <Html position={[0, labelHeights[id], 0]} center zIndexRange={[10, 0]}>
+      <button className="scene-label" type="button" onClick={e => { e.stopPropagation(); onSelect(id); }} aria-label={`${names[id]}, ${status}. View equipment details`} aria-pressed={selected} title={`${names[id]} · ${status}`}
+        style={{ display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', background: labelBackground, border: `1px solid ${attention?tones[status]:selected?'#2b3e8d':'#d4d7e3'}`, color: labelColor, borderRadius: compactIndex ? 20 : 9, padding: compactIndex ? '6px' : '7px 10px', minWidth: 32, minHeight: 32, justifyContent: 'center', fontFamily: 'inherit', fontSize: 12, fontWeight: 650, boxShadow: attention?`0 0 0 3px ${status==='critical'?'rgba(227,95,80,.2)':status==='warning'?'rgba(216,149,25,.2)':'rgba(135,146,155,.17)'},0 3px 12px #202a3414`:'0 3px 12px #202a3414', cursor: 'pointer' }}>
+        {compactIndex ? ids.indexOf(id) + 1 : <><span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: tones[status] }} />{names[id]}{(attention||selected)&&<span style={{ color: textTones[status], fontWeight: 700, textTransform: 'capitalize' }}>· {status}</span>}</>}
+      </button>
+    </Html>
+  </group>;
 }
 
-/* =========================================================================
-   REALISTIC 3D EQUIPMENT & ARCHITECTURAL PRECINCT MODELS
-   ========================================================================= */
-
-// Realistic Concrete Base Pad
-function Pad({ width = 1.8, depth = 1.4 }: { width?: number; depth?: number }) {
-  return (
-    <RoundedBox args={[width, 0.16, depth]} radius={0.06} smoothness={2} position={[0, 0.08, 0]} receiveShadow castShadow>
-      <meshStandardMaterial color="#cbd5e1" roughness={0.7} metalness={0.1} />
-    </RoundedBox>
-  );
+function Pad({ width = 1.65, depth = 1.3 }: { width?: number; depth?: number }) {
+  return <RoundedBox args={[width, 0.16, depth]} radius={0.06} smoothness={2} position={[0, 0.08, 0]} receiveShadow castShadow>
+    <meshStandardMaterial color="#f9faff" roughness={0.75} />
+  </RoundedBox>;
 }
 
 // 1. Realistic Rainwater Storage Tank (Corrugated Industrial Tank with Sight Glass)
 function Tank({ level, quality, animate }: { level: number | null; quality: string; animate: boolean }) {
   const surface = useRef<THREE.Mesh>(null);
-  const fraction = level === null ? 0.75 : THREE.MathUtils.clamp(level / 100, 0.05, 0.95);
-  const fillHeight = 2.4 * fraction;
-
-  useFrame(({ clock }) => {
-    if (surface.current) {
-      surface.current.position.y = 0.3 + fillHeight + (animate ? Math.sin(clock.elapsedTime * 1.5) * 0.012 : 0);
-    }
-  });
-
-  return (
-    <group>
-      <Pad width={2.9} depth={2.9} />
-      {/* Corrugated Outer Metallic Shell */}
-      <mesh position={[0, 1.55, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[1.14, 1.16, 2.7, 48, 8, true]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.75} roughness={0.25} side={THREE.DoubleSide} />
-      </mesh>
-      {/* Transparent Inspection Glass Cylinder */}
-      <mesh position={[0, 1.55, 0]}>
-        <cylinderGeometry args={[1.13, 1.13, 2.68, 48, 1, true]} />
-        <meshPhysicalMaterial
-          color="#a5f3fc"
-          transparent
-          opacity={0.32}
-          roughness={0.08}
-          metalness={0.1}
-          transmission={0.65}
-          thickness={0.4}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-      {/* Stored Water Column */}
-      <mesh position={[0, 0.3 + fillHeight / 2, 0]}>
-        <cylinderGeometry args={[1.1, 1.1, fillHeight, 48]} />
-        <meshStandardMaterial
-          color={quality === 'valid' ? '#0ea5e9' : '#64748b'}
-          transparent
-          opacity={0.75}
-          roughness={0.15}
-          metalness={0.2}
-        />
-      </mesh>
-      {/* Water Surface Wave Mesh */}
-      <mesh ref={surface} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.3 + fillHeight, 0]}>
-        <circleGeometry args={[1.1, 48]} />
-        <meshStandardMaterial color="#38bdf8" transparent opacity={0.8} roughness={0.1} />
-      </mesh>
-      {/* Metallic Reinforcement Ribs & Domed Roof */}
-      {[0.32, 1.05, 1.78, 2.5, 2.92].map(y => (
-        <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <torusGeometry args={[1.17, 0.045, 12, 48]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.85} roughness={0.2} />
-        </mesh>
-      ))}
-      {/* Domed Roof Cap */}
-      <mesh position={[0, 2.98, 0]} castShadow>
-        <cylinderGeometry args={[0.01, 1.18, 0.28, 48]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.7} roughness={0.3} />
-      </mesh>
-      {/* Vertical Service Ladder & Sight Glass */}
-      <mesh position={[0.95, 1.5, 0.82]}>
-        <boxGeometry args={[0.08, 2.4, 0.04]} />
-        <meshStandardMaterial color="#64748b" metalness={0.8} />
-      </mesh>
-    </group>
-  );
+  const fraction = level === null ? 0.5 : THREE.MathUtils.clamp(level / 100, 0.02, 0.98);
+  const fillHeight = 2.35 * fraction;
+  useFrame(({ clock }) => { if (surface.current) surface.current.position.y = 0.3 + fillHeight + (animate ? Math.sin(clock.elapsedTime * 1.2) * 0.015 : 0); });
+  return <group>
+    <Pad width={2.7} depth={2.7} />
+    <mesh position={[0, 1.5, 0]} castShadow><cylinderGeometry args={[1.06, 1.12, 2.55, 48, 1, true]} /><meshPhysicalMaterial color="#cbcfde" roughness={0.12} metalness={0.08} transparent opacity={0.28} side={THREE.DoubleSide} depthWrite={false} /></mesh>
+    <mesh position={[0, 0.3 + fillHeight / 2, 0]}><cylinderGeometry args={[1.035, 1.085, fillHeight, 48]} /><meshStandardMaterial color={quality === 'valid' ? '#5571ce' : '#a6adc6'} transparent opacity={0.68} roughness={0.25} /></mesh>
+    <mesh ref={surface} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.3 + fillHeight, 0]}><circleGeometry args={[1.035, 48]} /><meshStandardMaterial color="#abb9e7" transparent opacity={0.6} roughness={0.2} side={THREE.DoubleSide} /></mesh>
+    {[0.28, 2.76].map(y => <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow><torusGeometry args={[1.09, 0.055, 12, 48]} /><meshStandardMaterial color="#e5e7ee" metalness={0.2} roughness={0.3} /></mesh>)}
+    <mesh position={[0, 0.28, 0]} castShadow><cylinderGeometry args={[1.13, 1.13, 0.15, 48]} /><meshStandardMaterial color="#dbdee7" roughness={0.5} /></mesh>
+    <mesh position={[0, 2.86, 0]} castShadow><cylinderGeometry args={[1.12, 1.12, 0.12, 48]} /><meshStandardMaterial color="#f4f6fb" roughness={0.5} /></mesh>
+    <mesh position={[0.3, 2.96, 0]}><cylinderGeometry args={[0.25, 0.25, 0.07, 24]} /><meshStandardMaterial color="#8289a0" /></mesh>
+    <mesh position={[0.05, 1.35, 1.065]}><boxGeometry args={[0.75, 0.42, 0.055]} /><meshStandardMaterial color="#ffffff" /></mesh>
+    <Html position={[0.05, 1.36, 1.11]} transform distanceFactor={7} rotation={[0, 0, 0]} zIndexRange={[2, 0]} style={{ pointerEvents: 'none' }}><div aria-hidden="true" style={{ color: '#324eac', fontSize: 18, fontWeight: 800, letterSpacing: -1 }}>maxis</div></Html>
+    <mesh position={[0.78, 1.5, 0.83]}><boxGeometry args={[0.1, 2.2, 0.055]} /><meshStandardMaterial color="#f8faff" /></mesh>
+    <mesh position={[0.78, 0.4 + fraction * 1.1, 0.87]}><boxGeometry args={[0.055, fraction * 2.2, 0.02]} /><meshBasicMaterial color={quality === 'valid' ? '#304aa5' : '#878c9b'} /></mesh>
+  </group>;
 }
 
 // 2. Realistic Booster Pump Skid (Blue Motor, Cooling Fins & Impeller Chamber)
 function Pump({ running, animate }: { running: boolean; animate: boolean }) {
   const fan = useRef<THREE.Group>(null);
-  useFrame((_, delta) => {
-    if (fan.current && running && animate) fan.current.rotation.z += delta * 4;
-  });
+  useFrame((_, delta) => { if (fan.current && running && animate) fan.current.rotation.z += delta * 2.5; });
+  return <group>
+    <Pad />
+    <RoundedBox args={[1.05, 0.14, 0.85]} radius={0.04} position={[0, 0.3, 0]} castShadow><meshStandardMaterial color="#586181" /></RoundedBox>
+    <mesh position={[0, 0.67, -0.1]} rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[0.34, 0.34, 0.78, 32]} /><meshStandardMaterial color="#4760b5" roughness={0.5} metalness={0.15} /></mesh>
+    {[-0.34, -0.24, -0.14, -0.04, 0.06].map(z => <mesh key={z} position={[0, 0.67, z]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.34, 0.02, 6, 28]} /><meshStandardMaterial color="#2e4491" /></mesh>)}
+    <mesh position={[0, 0.66, 0.45]} rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[0.4, 0.4, 0.32, 32]} /><meshStandardMaterial color="#dbdee7" metalness={0.5} roughness={0.25} /></mesh>
+    <group ref={fan} position={[0, 0.66, 0.62]}>{[0, 1, 2, 3].map(i => <mesh key={i} rotation={[0, 0, i * Math.PI / 2]} position={[0, 0, 0.01]}><boxGeometry args={[0.48, 0.045, 0.04]} /><meshStandardMaterial color="#526194" /></mesh>)}</group>
+    <mesh position={[0.42, 0.59, 0.4]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.13, 0.13, 0.4, 16]} /><meshStandardMaterial color="#848daa" /></mesh>
+  </group>;
+}
 
-  return (
-    <group>
-      <Pad width={1.7} depth={1.3} />
-      {/* Steel Base Skid */}
-      <RoundedBox args={[1.2, 0.16, 0.9]} radius={0.04} position={[0, 0.3, 0]} castShadow>
-        <meshStandardMaterial color="#334155" metalness={0.8} roughness={0.25} />
-      </RoundedBox>
-      {/* Blue Electric Motor Housing */}
-      <mesh position={[0, 0.7, -0.12]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.36, 0.36, 0.85, 32]} />
-        <meshStandardMaterial color="#1d4ed8" roughness={0.4} metalness={0.3} />
-      </mesh>
-      {/* Motor Heat Sink Cooling Fins */}
-      {[-0.38, -0.28, -0.18, -0.08, 0.02, 0.12].map(z => (
-        <mesh key={z} position={[0, 0.7, z]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.365, 0.022, 8, 32]} />
-          <meshStandardMaterial color="#1e40af" metalness={0.5} />
-        </mesh>
-      ))}
-      {/* Polished Chrome Impeller Volute Casing */}
-      <mesh position={[0, 0.69, 0.48]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.42, 0.42, 0.36, 32]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.85} roughness={0.15} />
-      </mesh>
-      {/* Rear Cooling Fan */}
-      <group ref={fan} position={[0, 0.7, 0.68]}>
-        {[0, 1, 2, 3].map(i => (
-          <mesh key={i} rotation={[0, 0, (i * Math.PI) / 2]}>
-            <boxGeometry args={[0.5, 0.05, 0.04]} />
-            <meshStandardMaterial color="#475569" />
-          </mesh>
-        ))}
-      </group>
-      {/* Analog Pressure Gauge */}
-      <mesh position={[0.35, 1.05, 0.48]}>
-        <cylinderGeometry args={[0.12, 0.12, 0.06, 24]} />
-        <meshStandardMaterial color="#ffffff" metalness={0.4} />
-      </mesh>
+function Membrane({ status }: { status: EquipmentStatus }) {
+  const fault=status==='warning'||status==='critical';
+  const bodyColor=status==='critical'?'#f0b9b4':status==='warning'?'#f3dfb9':'#e5e7ee';
+  const glowColor=status==='critical'?'#e35f50':status==='warning'?'#d89519':'#000000';
+  return <group>
+    <Pad width={2.05} depth={1.6} />
+    {[-0.86, 0.86].map(x => <mesh key={x} position={[x, 1.08, -0.35]} castShadow><boxGeometry args={[0.07, 1.8, 0.08]} /><meshStandardMaterial color="#878da1" metalness={0.5} /></mesh>)}
+    {[0.4, 1.93].map(y => <mesh key={y} position={[0, y, -0.35]} castShadow><boxGeometry args={[1.78, 0.08, 0.09]} /><meshStandardMaterial color="#878da1" metalness={0.5} /></mesh>)}
+    {[-0.56, 0, 0.56].map((x, i) => <group key={x} position={[x, 0, 0]}>
+      <mesh position={[0, 1.08, 0]} castShadow><cylinderGeometry args={[0.205, 0.205, 1.45, 24]} /><meshStandardMaterial color={bodyColor} emissive={fault ? glowColor : '#000000'} emissiveIntensity={fault ? 0.12 : 0} roughness={0.4} metalness={0.08} /></mesh>
+      {[0.41, 1.76].map(y => <mesh key={y} position={[0, y, 0]} castShadow><cylinderGeometry args={[0.235, 0.235, 0.17, 24]} /><meshStandardMaterial color={status === 'critical' || status === 'warning' ? tones[status] : '#737b95'} roughness={0.4} /></mesh>)}
+      <mesh position={[0, 1.12, 0.211]}><boxGeometry args={[0.15, 0.4, 0.02]} /><meshStandardMaterial color={i % 2 ? '#abb8e6' : '#bec8e8'} /></mesh>
+      <mesh position={[0, 1.98, 0]}><cylinderGeometry args={[0.065, 0.065, 0.23, 12]} /><meshStandardMaterial color="#a7acbe" metalness={0.45} /></mesh>
+    </group>)}
+    <mesh position={[0, 2.1, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.065, 0.065, 1.4, 12]} /><meshStandardMaterial color="#a7acbe" metalness={0.45} /></mesh>
+  </group>;
+}
+
+function UV({ running }: { running: boolean }) {
+  return <group>
+    <Pad width={1.95} depth={1.2} />
+    {[-0.55, 0.55].map(x => <mesh key={x} position={[x, 0.45, 0]} castShadow><boxGeometry args={[0.12, 0.5, 0.55]} /><meshStandardMaterial color="#bcc0cf" metalness={0.5} /></mesh>)}
+    <mesh position={[0, 0.85, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><cylinderGeometry args={[0.24, 0.24, 1.55, 32]} /><meshPhysicalMaterial color="#edeff4" transparent opacity={0.6} metalness={0.5} roughness={0.15} depthWrite={false} /></mesh>
+    <mesh position={[0, 0.85, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.085, 0.085, 1.45, 24]} /><meshStandardMaterial color={running ? '#a1b5f8' : '#9195a1'} emissive={running ? '#7e93da' : '#000000'} emissiveIntensity={0.6} /></mesh>
+    {[-0.8, 0.8].map(x => <mesh key={x} position={[x, 0.85, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><cylinderGeometry args={[0.27, 0.27, 0.15, 24]} /><meshStandardMaterial color="#81889e" metalness={0.5} roughness={0.3} /></mesh>)}
+    <RoundedBox args={[0.55, 0.45, 0.27]} radius={0.04} position={[0, 0.55, 0.48]} castShadow><meshStandardMaterial color="#f8f9fc" /></RoundedBox>
+    <mesh position={[0, 0.6, 0.62]}><planeGeometry args={[0.3, 0.16]} /><meshBasicMaterial color={running ? '#bdc8ed' : '#b9bbc1'} /></mesh>
+  </group>;
+}
+
+function Solar() {
+  return <group>
+    {[-1.3, 1.3].flatMap(x => [-0.65, 0.65].map(z => <mesh key={`${x}-${z}`} position={[x, 0.83, z]} castShadow><boxGeometry args={[0.055, 1.65, 0.06]} /><meshStandardMaterial color="#9a9faf" metalness={0.5} /></mesh>))}
+    <group position={[0, 1.7, 0]} rotation={[-0.23, 0, 0]}>
+      <RoundedBox args={[3.35, 0.08, 2.1]} radius={0.02} castShadow><meshStandardMaterial color="#f2f3f6" metalness={0.3} /></RoundedBox>
+      {[-1.08, 0, 1.08].flatMap(x => [-0.5, 0.5].map(z => <group key={`${x}-${z}`} position={[x, 0.06, z]}>
+        <mesh castShadow><boxGeometry args={[1.01, 0.055, 0.94]} /><meshStandardMaterial color="#213166" metalness={0.22} roughness={0.25} /></mesh>
+        {[-0.31, 0, 0.31].map(cx => <mesh key={cx} position={[cx, 0.03, 0]}><boxGeometry args={[0.009, 0.01, 0.88]} /><meshBasicMaterial color="#546396" /></mesh>)}
+        {[-0.3, 0, 0.3].map(cz => <mesh key={cz} position={[0, 0.03, cz]}><boxGeometry args={[0.95, 0.01, 0.009]} /><meshBasicMaterial color="#546396" /></mesh>)}
+      </group>))}
     </group>
   );
 }
@@ -690,113 +451,46 @@ function Solar() {
 
 // 6. Realistic Mains Interconnection (Flanged Valve & Handwheel)
 function Mains() {
-  return (
-    <group>
-      <Pad width={1.9} depth={1.4} />
-      {/* High-Pressure Flanged Feed Pipe */}
-      <mesh position={[0, 0.6, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 1.7, 32]} />
-        <meshStandardMaterial color="#0284c7" metalness={0.7} roughness={0.3} />
-      </mesh>
-      {/* Valve Body Box */}
-      <mesh position={[0, 0.82, 0]} castShadow>
-        <boxGeometry args={[0.5, 0.5, 0.44]} />
-        <meshStandardMaterial color="#0369a1" metalness={0.6} />
-      </mesh>
-      {/* Valve Stem */}
-      <mesh position={[0, 1.18, 0]}>
-        <cylinderGeometry args={[0.055, 0.055, 0.45, 16]} />
-        <meshStandardMaterial color="#64748b" metalness={0.9} />
-      </mesh>
-      {/* Large Yellow Control Handwheel */}
-      <mesh position={[0, 1.38, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-        <torusGeometry args={[0.35, 0.05, 12, 32]} />
-        <meshStandardMaterial color="#eab308" metalness={0.6} roughness={0.3} />
-      </mesh>
-      {[0, Math.PI / 3, (2 * Math.PI) / 3].map(r => (
-        <mesh key={r} position={[0, 1.38, 0]} rotation={[0, r, 0]}>
-          <boxGeometry args={[0.66, 0.045, 0.04]} />
-          <meshStandardMaterial color="#eab308" />
-        </mesh>
-      ))}
-    </group>
-  );
+  return <group>
+    <Pad width={1.85} depth={1.35} />
+    <mesh position={[0, 0.55, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><cylinderGeometry args={[0.18, 0.18, 1.6, 24]} /><meshStandardMaterial color="#7884ae" metalness={0.5} roughness={0.3} /></mesh>
+    <mesh position={[0, 0.75, 0]} castShadow><boxGeometry args={[0.45, 0.45, 0.4]} /><meshStandardMaterial color="#5467a9" metalness={0.3} /></mesh>
+    <mesh position={[0, 1.08, 0]}><cylinderGeometry args={[0.05, 0.05, 0.4, 12]} /><meshStandardMaterial color="#787f96" metalness={0.6} /></mesh>
+    <mesh position={[0, 1.28, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow><torusGeometry args={[0.32, 0.045, 10, 28]} /><meshStandardMaterial color="#5c6995" metalness={0.3} /></mesh>
+    {[0, Math.PI / 3, 2 * Math.PI / 3].map(r => <mesh key={r} position={[0, 1.28, 0]} rotation={[0, r, 0]}><boxGeometry args={[0.6, 0.04, 0.035]} /><meshStandardMaterial color="#5c6995" /></mesh>)}
+    <mesh position={[-0.58, 0.47, 0]}><boxGeometry args={[0.08, 0.6, 0.4]} /><meshStandardMaterial color="#c0c4d0" /></mesh>
+    <mesh position={[0.58, 0.47, 0]}><boxGeometry args={[0.08, 0.6, 0.4]} /><meshStandardMaterial color="#c0c4d0" /></mesh>
+  </group>;
 }
 
-// 7. Realistic Modern Architectural Township Buildings (Matching Picture 2 Cityscape)
-function TownshipPrecinct() {
-  return (
-    <group>
-      {/* High-Rise Residential Tower 1 */}
-      <group position={[-1.2, 0, -1.0]}>
-        <RoundedBox args={[1.8, 3.2, 1.6]} radius={0.04} position={[0, 1.6, 0]} castShadow receiveShadow>
-          <meshStandardMaterial color="#f1f5f9" roughness={0.4} metalness={0.15} />
-        </RoundedBox>
-        {/* Modern Window Matrix on Facade */}
-        {[0.6, 1.2, 1.8, 2.4, 2.8].flatMap(y =>
-          [-0.55, 0, 0.55].map(x => (
-            <mesh key={`${x}-${y}`} position={[x, y, 0.81]}>
-              <planeGeometry args={[0.34, 0.38]} />
-              <meshStandardMaterial color="#0284c7" metalness={0.8} roughness={0.1} />
-            </mesh>
-          ))
-        )}
-        {/* Rooftop Plant & HVAC Chiller Unit */}
-        <RoundedBox args={[0.9, 0.45, 0.8]} radius={0.03} position={[0, 3.42, 0]} castShadow>
-          <meshStandardMaterial color="#64748b" metalness={0.7} />
-        </RoundedBox>
-        {/* Rooftop Parapet Railing */}
-        <mesh position={[0, 3.25, 0]}>
-          <boxGeometry args={[1.85, 0.08, 1.65]} />
-          <meshStandardMaterial color="#94a3b8" />
-        </mesh>
-      </group>
-
-      {/* Mid-Rise Commercial Office Block (Matching the highlighted building in Picture 2!) */}
-      <group position={[1.2, 0, 0.8]}>
-        <RoundedBox args={[2.0, 2.4, 2.0]} radius={0.04} position={[0, 1.2, 0]} castShadow receiveShadow>
-          <meshStandardMaterial color="#e2e8f0" roughness={0.5} metalness={0.2} />
-        </RoundedBox>
-        {/* Window Matrix */}
-        {[0.5, 1.1, 1.7].flatMap(y =>
-          [-0.65, -0.2, 0.25, 0.7].map(x => (
-            <mesh key={`${x}-${y}`} position={[x, y, 1.01]}>
-              <planeGeometry args={[0.32, 0.36]} />
-              <meshStandardMaterial color="#38bdf8" metalness={0.9} roughness={0.15} />
-            </mesh>
-          ))
-        )}
-        {/* Rooftop Elevator Overrun & AC Compressor Units */}
-        <RoundedBox args={[0.7, 0.5, 0.7]} radius={0.02} position={[-0.3, 2.65, -0.2]} castShadow>
-          <meshStandardMaterial color="#475569" />
-        </RoundedBox>
-        <mesh position={[0.5, 2.52, 0.4]} castShadow>
-          <cylinderGeometry args={[0.18, 0.18, 0.24, 16]} />
-          <meshStandardMaterial color="#94a3b8" />
-        </mesh>
-      </group>
-    </group>
-  );
+function House({ position, rotation = 0 }: { position: [number, number, number]; rotation?: number }) {
+  const roof = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      -0.58, 0, -0.6, 0.58, 0, -0.6, 0, 0.42, -0.6,
+      -0.58, 0, 0.6, 0.58, 0, 0.6, 0, 0.42, 0.6,
+    ], 3));
+    geometry.setIndex([0, 2, 1, 3, 4, 5, 0, 3, 5, 0, 5, 2, 1, 2, 5, 1, 5, 4, 0, 1, 4, 0, 4, 3]);
+    geometry.computeVertexNormals();
+    return geometry;
+  }, []);
+  useEffect(() => () => roof.dispose(), [roof]);
+  return <group position={position} rotation={[0, rotation, 0]}>
+    <RoundedBox args={[1, 0.82, 1.05]} radius={0.025} position={[0, 0.51, 0]} castShadow><meshStandardMaterial color="#f4f5f7" roughness={0.8} /></RoundedBox>
+    <mesh geometry={roof} position={[0, 0.94, 0]} castShadow><meshStandardMaterial color="#737b95" roughness={0.7} /></mesh>
+    <mesh position={[0.13, 0.37, 0.532]}><boxGeometry args={[0.23, 0.56, 0.025]} /><meshStandardMaterial color="#8990a8" /></mesh>
+    <mesh position={[-0.25, 0.62, 0.533]}><boxGeometry args={[0.22, 0.24, 0.027]} /><meshStandardMaterial color="#96a6dc" roughness={0.2} /></mesh>
+    <mesh position={[0.51, 0.61, 0]}><boxGeometry args={[0.025, 0.24, 0.28]} /><meshStandardMaterial color="#96a6dc" roughness={0.2} /></mesh>
+    <mesh position={[0.13, 0.09, 0.73]}><boxGeometry args={[0.4, 0.06, 0.36]} /><meshStandardMaterial color="#d2d5df" /></mesh>
+  </group>;
 }
 
-// Surrounding Realistic Trees & Street Furniture
-function RealisticTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
-  return (
-    <group position={position} scale={scale}>
-      <mesh position={[0, 0.45, 0]} castShadow>
-        <cylinderGeometry args={[0.04, 0.07, 0.9, 10]} />
-        <meshStandardMaterial color="#78350f" roughness={0.9} />
-      </mesh>
-      <mesh position={[0, 1.08, 0]} castShadow>
-        <dodecahedronGeometry args={[0.42, 1]} />
-        <meshStandardMaterial color="#15803d" roughness={0.8} />
-      </mesh>
-      <mesh position={[0.06, 1.35, 0]} castShadow>
-        <dodecahedronGeometry args={[0.3, 1]} />
-        <meshStandardMaterial color="#22c55e" roughness={0.8} />
-      </mesh>
-    </group>
-  );
+function Tree({ position, size = 1 }: { position: [number, number, number]; size?: number }) {
+  return <group position={position} scale={size}>
+    <mesh position={[0, 0.35, 0]} castShadow><cylinderGeometry args={[0.035, 0.05, 0.7, 8]} /><meshStandardMaterial color="#636d8e" /></mesh>
+    <mesh position={[0, 0.87, 0]} castShadow><sphereGeometry args={[0.34, 10, 8]} /><meshStandardMaterial color="#9297aa" flatShading roughness={0.9} /></mesh>
+    <mesh position={[0.08, 1.09, 0]} castShadow><sphereGeometry args={[0.26, 10, 8]} /><meshStandardMaterial color="#aeb3c2" flatShading roughness={0.9} /></mesh>
+  </group>;
 }
 
 // Streetlight with soft emissive warm glow
@@ -900,142 +594,40 @@ function Scene({
   const running = snapshot.connected && !snapshot.stopped && (snapshot.metrics.flow.value ?? 0) > 0;
   const rain = running && snapshot.source === 'rainwater';
   const mains = running && snapshot.source === 'mains';
-
-  // Realistic Pipe Routes through the Plant
-  const rainPath = useMemo<[number, number, number][]>(
-    () => [[-5.8, 0.48, 0.6], [-5.8, 0.48, 2.3], [-3.4, 0.48, 2.3], [-3.4, 0.48, 1.2]],
-    []
-  );
-  const filterPath = useMemo<[number, number, number][]>(
-    () => [[-3.4, 0.48, 1.2], [-3.4, 0.48, 2.3], [-0.9, 0.48, 2.3], [-0.9, 0.48, 0.7]],
-    []
-  );
-  const uvPath = useMemo<[number, number, number][]>(
-    () => [[-0.9, 0.48, 0.7], [-0.9, 0.48, 2.3], [1.8, 0.48, 2.3], [1.8, 0.48, 0.8]],
-    []
-  );
-  const homesPath = useMemo<[number, number, number][]>(
-    () => [[1.8, 0.48, 0.8], [1.8, 0.48, 2.3], [3.6, 0.48, 2.3], [3.6, 0.48, 1.4], [5.2, 0.48, 1.4]],
-    []
-  );
-  const mainsPath = useMemo<[number, number, number][]>(
-    () => [[4.4, 0.48, -2.6], [7.0, 0.48, -2.6], [7.0, 0.48, -0.6], [3.6, 0.48, -0.6], [3.6, 0.48, 1.4], [5.2, 0.48, 1.4]],
-    []
-  );
-  const powerPath = useMemo<[number, number, number][]>(
-    () => [[-2.9, 0.2, -3.2], [-2.9, 0.2, -1.4], [-3.4, 0.2, -1.4], [-3.4, 0.2, 1.2]],
-    []
-  );
-
-  return (
-    <>
-      {/* Sky & Atmospheric Lighting (Warm Sunlight & Sky Fill matching Picture 2) */}
-      <color attach="background" args={[immersive ? '#0f172a' : '#dbeafe']} />
-      <fog attach="fog" args={[immersive ? '#0f172a' : '#dbeafe', 26, 68]} />
-      <ambientLight intensity={immersive ? 0.6 : 0.85} />
-      <hemisphereLight args={['#dbeafe', '#475569', 1.1]} />
-      <directionalLight
-        position={[-8, 18, 12]}
-        intensity={2.3}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-14}
-        shadow-camera-right={14}
-        shadow-camera-top={12}
-        shadow-camera-bottom={-12}
-        shadow-bias={-0.0001}
-      />
-
-      {/* Urban Precinct Platform with Roads, Sidewalks & Curbs */}
-      <UrbanPrecinctPlatform />
-
-      {/* Animated Pipes with Glowing Hydro Particles */}
-      <Pipe points={rainPath} active={rain} animate={animate} />
-      <Pipe points={filterPath} active={rain} animate={animate} />
-      <Pipe points={uvPath} active={rain} animate={animate} />
-      <Pipe points={homesPath} active={rain} animate={animate} />
-      <Pipe points={mainsPath} active={mains} animate={animate} />
-      <Pipe
-        points={powerPath}
-        active={snapshot.connected && (snapshot.metrics.solarPower.value ?? 0) > 0}
-        animate={animate}
-        color="#eab308"
-        speed={0.03}
-      />
-
-      {/* Interactive Equipment Models */}
-      {ids.map(id => (
-        <EquipmentTarget
-          key={id}
-          id={id}
-          status={snapshot.equipment[id]?.status || 'normal'}
-          selected={selected === id}
-          onSelect={onSelect}
-          animate={animate}
-          snapshot={snapshot}
-        >
-          {id === 'tank' && (
-            <Tank
-              level={snapshot.metrics.tankLevel.value}
-              quality={snapshot.metrics.tankLevel.quality}
-              animate={animate}
-            />
-          )}
-          {id === 'pump' && <Pump running={rain} animate={animate} />}
-          {id === 'membrane' && <Membrane status={snapshot.equipment.membrane.status} />}
-          {id === 'uv' && <UV running={rain} />}
-          {id === 'solar' && <Solar />}
-          {id === 'mains' && <Mains />}
-          {id === 'homes' && <TownshipPrecinct />}
-        </EquipmentTarget>
-      ))}
-
-      {/* Surrounding City Trees and Streetlights */}
-      {[
-        [-8.2, 0, -4.2],
-        [-6.5, 0, -4.8],
-        [8.4, 0, 3.8],
-        [3.8, 0, 4.4],
-        [8.2, 0, -4.2],
-        [-8.4, 0, 4.6],
-      ].map((p, i) => (
-        <RealisticTree key={i} position={p as [number, number, number]} scale={i % 2 === 0 ? 1.05 : 0.85} />
-      ))}
-      {[
-        [-5.2, 0, 3.2],
-        [1.2, 0, 3.2],
-        [7.2, 0, 3.2],
-      ].map((p, i) => (
-        <StreetLight key={i} position={p as [number, number, number]} />
-      ))}
-
-      {/* Soft Contact Shadows on Ground */}
-      <ContactShadows
-        position={[0, -0.04, 0]}
-        opacity={0.35}
-        scale={28}
-        blur={2.4}
-        far={8}
-        resolution={1024}
-        color="#1e293b"
-        frames={1}
-      />
-
-      {/* Orbit Controls with Damping */}
-      <OrbitControls
-        ref={controls}
-        makeDefault
-        target={[0, 1.0, 0]}
-        minDistance={10}
-        maxDistance={36}
-        minPolarAngle={0.2}
-        maxPolarAngle={Math.PI / 2.2}
-        enablePan={true}
-        enableDamping={animate}
-        dampingFactor={0.1}
-      />
-    </>
-  );
+  const rainPath = useMemo<[number, number, number][]>(() => [[-5.8, 0.47, 0.5], [-5.8, 0.47, 2.25], [-3.4, 0.47, 2.25], [-3.4, 0.47, 1.1]], []);
+  const filterPath = useMemo<[number, number, number][]>(() => [[-3.4, 0.47, 1.1], [-3.4, 0.47, 2.25], [-0.9, 0.47, 2.25], [-0.9, 0.47, 0.7]], []);
+  const uvPath = useMemo<[number, number, number][]>(() => [[-0.9, 0.47, 0.7], [-0.9, 0.47, 2.25], [1.8, 0.47, 2.25], [1.8, 0.47, 0.8]], []);
+  const homesPath = useMemo<[number, number, number][]>(() => [[1.8, 0.47, 0.8], [1.8, 0.47, 2.25], [3.6, 0.47, 2.25], [3.6, 0.47, 1.5], [5.4, 0.47, 1.5]], []);
+  const mainsPath = useMemo<[number, number, number][]>(() => [[4.4, 0.47, -2.5], [6.8, 0.47, -2.5], [6.8, 0.47, -0.65], [3.6, 0.47, -0.65], [3.6, 0.47, 1.5], [5.4, 0.47, 1.5]], []);
+  const powerPath = useMemo<[number, number, number][]>(() => [[-2.9, 0.18, -3.1], [-2.9, 0.18, -1.4], [-3.4, 0.18, -1.4], [-3.4, 0.18, 1.1]], []);
+  return <>
+    <color attach="background" args={[immersive ? '#141720' : '#e9ebf2']} />
+    {immersive&&<fog attach="fog" args={['#141720',24,62]} />}
+    <ambientLight intensity={immersive?0.72:1.1} />
+    <hemisphereLight args={immersive?['#d3d9ec','#1b2450',1.05]:['#ffffff','#b7bccb',1.3]} />
+    <directionalLight position={[-5, 12, 8]} intensity={immersive?1.65:2.1} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-11} shadow-camera-right={11} shadow-camera-top={9} shadow-camera-bottom={-9} shadow-normalBias={0.05} />
+    {immersive&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,-0.58,0]} receiveShadow><planeGeometry args={[160,160]}/><meshStandardMaterial color="#141720" roughness={1}/></mesh>}
+    <RoundedBox args={[17.2, 0.4, 9.8]} radius={0.2} position={[0, -0.26, -0.35]} receiveShadow><meshStandardMaterial color={immersive?'#303443':'#dcdfe8'} roughness={0.9} /></RoundedBox>
+    <RoundedBox args={[16.6, 0.055, 9.2]} radius={0.16} position={[0, -0.038, -0.35]} receiveShadow><meshStandardMaterial color={immersive?'#414658':'#edeef3'} roughness={0.95} /></RoundedBox>
+    <mesh position={[-1.65, 0.007, 0.65]} receiveShadow><boxGeometry args={[10.9, 0.035, 3.3]} /><meshStandardMaterial color={immersive?'#393e50':'#dfe1e9'} /></mesh>
+    <RoundedBox args={[4.7, 0.04, 4.65]} radius={0.3} position={[5.3, 0.01, 1.47]} receiveShadow><meshStandardMaterial color={immersive?'#484e64':'#e1e3eb'} roughness={1} /></RoundedBox>
+    <mesh position={[5.3, 0.045, 1.52]} receiveShadow><boxGeometry args={[0.5, 0.03, 4.1]} /><meshStandardMaterial color={immersive?'#757882':'#e3e5ed'} /></mesh>
+    <mesh position={[5.3, 0.047, 1.52]} receiveShadow><boxGeometry args={[4, 0.03, 0.35]} /><meshStandardMaterial color={immersive?'#757882':'#e3e5ed'} /></mesh>
+    <Pipe points={rainPath} active={rain} animate={animate} /><Pipe points={filterPath} active={rain} animate={animate} /><Pipe points={uvPath} active={rain} animate={animate} /><Pipe points={homesPath} active={rain} animate={animate} />
+    <Pipe points={mainsPath} active={mains} animate={animate} /><Pipe points={powerPath} active={snapshot.connected && (snapshot.metrics.solarPower.value ?? 0) > 0} animate={animate} color="#d9b259" speed={0.025} />
+    {ids.map(id => <Equipment key={id} id={id} status={snapshot.equipment[id].status} selected={selected === id} onSelect={onSelect} compact={compact} animate={animate}>
+      {id === 'tank' && <Tank level={snapshot.metrics.tankLevel.value} quality={snapshot.metrics.tankLevel.quality} animate={animate} />}
+      {id === 'pump' && <Pump running={rain} animate={animate} />}
+        {id === 'membrane' && <Membrane status={snapshot.equipment.membrane.status} />}
+      {id === 'uv' && <UV running={rain} />}
+      {id === 'solar' && <Solar />}
+      {id === 'mains' && <Mains />}
+      {id === 'homes' && [-1.23, 0.13, 1.48].flatMap((z, i) => [-1.05, 1.03].map((x, j) => <group key={`${x}-${z}`} position={[x, 0, z]} scale={0.8}><House position={[0, 0, 0]} rotation={(i + j) % 2 ? -0.08 : 0.06} /></group>))}
+    </Equipment>)}
+    {[[-7.4, 0, -3.7], [-6.5, 0, -3.85], [7.6, 0, 3.1], [3.5, 0, 3.4], [7.4, 0, -3.5]].map((p, i) => <Tree key={i} position={p as [number, number, number]} size={i % 2 ? 0.85 : 1.05} />)}
+    <ContactShadows position={[0, -0.49, 0]} opacity={0.22} scale={24} blur={2.2} far={6} resolution={512} color="#686f87" frames={1} />
+    <OrbitControls ref={controls} makeDefault target={[0, 0.7, -0.2]} minDistance={12} maxDistance={32} minPolarAngle={0.3} maxPolarAngle={Math.PI / 2.25} enablePan={false} enableDamping={animate} dampingFactor={0.12} />
+  </>;
 }
 
 /* =========================================================================
@@ -1198,352 +790,30 @@ function Schematic({
   const running = snapshot.connected && !snapshot.stopped && (snapshot.metrics.flow.value ?? 0) > 0;
   const rain = running && snapshot.source === 'rainwater';
   const mains = running && snapshot.source === 'mains';
-
-  const getMetricPreview = (id: EquipmentId) => {
-    switch (id) {
-      case 'tank':
-        return `${snapshot.metrics.tankLevel.value?.toFixed(0) ?? 82}% · ${(snapshot.metrics.tankVolume.value ?? 8200).toLocaleString()} L`;
-      case 'pump':
-        return `${snapshot.metrics.flow.value?.toFixed(1) ?? 2.4} L/s · ${snapshot.metrics.pumpPower.value?.toFixed(0) ?? 480} W`;
-      case 'membrane':
-        return `ΔP ${snapshot.metrics.pressureDelta.value?.toFixed(2) ?? 0.35} bar · ${snapshot.metrics.turbidityOut.value?.toFixed(2) ?? 0.18} NTU`;
-      case 'uv':
-        return `${snapshot.metrics.uvPower.value?.toFixed(0) ?? 65} W · 254 nm`;
-      case 'homes':
-        return `Demand ${snapshot.metrics.flow.value?.toFixed(1) ?? 2.4} L/s`;
-      case 'solar':
-        return `${snapshot.metrics.solarPower.value?.toFixed(0) ?? 1240} W generation`;
-      case 'mains':
-        return `${snapshot.metrics.mainsPressure.value?.toFixed(1) ?? 4.2} bar · Standby`;
-    }
-  };
-
-  return (
-    <div className="schematic-view-container">
-      {/* 1. TOP HEADER: Legend & Mode Switchers (Matching Picture 1) */}
-      <div className="schematic-header-bar">
-        <div className="schematic-legends">
-          <div className="schematic-legend-item">
-            <Droplets size={16} color="#38bdf8" />
-            <span>Water flow</span>
-          </div>
-          <div className="schematic-legend-item">
-            <Sun size={16} color="#eab308" />
-            <span>Solar energy ({snapshot.metrics.solarPower.value?.toFixed(0) ?? 0} W)</span>
-          </div>
-        </div>
-
-        <div className="schematic-actions">
-          <button
-            type="button"
-            className="schematic-btn"
-            onClick={onToggleMotion}
-            aria-label={animate ? 'Reduce motion' : 'Resume motion'}
-          >
-            {animate ? <Play size={14} /> : <Pause size={14} />}
-            <span>Reduced motion</span>
-          </button>
-          <button
-            type="button"
-            className="schematic-btn primary"
-            onClick={onSwitchTo3D}
-            aria-label="Switch to 3D installation view"
-          >
-            <Box size={14} />
-            <span>3D installation</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. MAIN SCHEMATIC CANVAS: Professional P&ID SCADA Layout */}
-      <div className="schematic-canvas-card">
-        <svg
-          viewBox={compact ? '0 0 440 560' : '0 0 1060 520'}
-          style={{ width: '100%', height: 'auto', display: 'block' }}
-          role="group"
-          aria-label="Interactive installation schematic"
-        >
-          <defs>
-            <filter id="schematic-card-shadow" x="-10%" y="-10%" width="125%" height="130%">
-              <feDropShadow dx="0" dy="2" stdDeviation="3.5" floodColor="#0f172a" floodOpacity="0.07" />
-            </filter>
-            {/* Directional Flow Chevron Pattern */}
-            <marker id="flow-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M 0 1.5 L 7 5 L 0 8.5 z" fill="#38bdf8" />
-            </marker>
-          </defs>
-
-          {/* Mint/Sage Precision Background Canvas */}
-          <rect
-            x="16"
-            y="14"
-            width={compact ? 408 : 1028}
-            height={compact ? 532 : 492}
-            rx="26"
-            fill="#f0f5f1"
-            stroke="#d5e2d7"
-            strokeWidth="1.2"
-          />
-
-          {/* Connective Pipes (Drawn behind the cards) */}
-          {!compact && (
-            <>
-              {/* Main Horizontal Water Treatment Pipe: Tank -> Pump -> Membrane -> UV -> Community */}
-              <g aria-hidden="true">
-                {/* Outer Pipe Wall */}
-                <path
-                  d="M 120 240 H 920"
-                  fill="none"
-                  stroke={rain ? '#0284c7' : '#94a3b8'}
-                  strokeWidth="10"
-                  strokeLinecap="round"
-                />
-                {/* Inner Fluid Channel */}
-                <path
-                  d="M 120 240 H 920"
-                  fill="none"
-                  stroke={rain ? '#38bdf8' : '#cbd5e1'}
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                />
-                {/* Pulsing Water Beads */}
-                {rain && (
-                  <path d="M 120 240 H 920" fill="none" stroke="#ffffff" strokeWidth="3.5" strokeDasharray="4 16">
-                    {animate && (
-                      <animate
-                        attributeName="stroke-dashoffset"
-                        from="0"
-                        to="-40"
-                        dur="1.2s"
-                        repeatCount="indefinite"
-                      />
-                    )}
-                  </path>
-                )}
-                {/* Flow Direction Indicator Chevrons Between Cards */}
-                {rain && (
-                  <>
-                    <polygon points="214,237 222,240 214,243" fill="#ffffff" opacity="0.9" />
-                    <polygon points="414,237 422,240 414,243" fill="#ffffff" opacity="0.9" />
-                    <polygon points="614,237 622,240 614,243" fill="#ffffff" opacity="0.9" />
-                    <polygon points="814,237 822,240 814,243" fill="#ffffff" opacity="0.9" />
-                  </>
-                )}
-              </g>
-
-              {/* Vertical Solar Array Power Line to Treatment Pump */}
-              <g aria-hidden="true">
-                <path
-                  d="M 320 144 V 192"
-                  fill="none"
-                  stroke={snapshot.metrics.solarPower.value && snapshot.metrics.solarPower.value > 0 ? '#0284c7' : '#cbd5e1'}
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                />
-                {snapshot.metrics.solarPower.value && snapshot.metrics.solarPower.value > 0 && (
-                  <path
-                    d="M 320 144 V 192"
-                    fill="none"
-                    stroke="#eab308"
-                    strokeWidth="3"
-                    strokeDasharray="3 9"
-                  >
-                    {animate && (
-                      <animate
-                        attributeName="stroke-dashoffset"
-                        from="0"
-                        to="-24"
-                        dur="0.9s"
-                        repeatCount="indefinite"
-                      />
-                    )}
-                  </path>
-                )}
-              </g>
-
-              {/* Mains Backup Interconnection Pipe into Community Line */}
-              <g aria-hidden="true">
-                <path
-                  d="M 894 396 H 988 V 240 H 920"
-                  fill="none"
-                  stroke={mains ? '#0284c7' : '#cbd5e1'}
-                  strokeWidth="10"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M 894 396 H 988 V 240 H 920"
-                  fill="none"
-                  stroke={mains ? '#38bdf8' : '#e2e8f0'}
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {mains && (
-                  <path
-                    d="M 894 396 H 988 V 240 H 920"
-                    fill="none"
-                    stroke="#ffffff"
-                    strokeWidth="3.5"
-                    strokeDasharray="4 16"
-                  >
-                    {animate && (
-                      <animate
-                        attributeName="stroke-dashoffset"
-                        from="0"
-                        to="-40"
-                        dur="1.2s"
-                        repeatCount="indefinite"
-                      />
-                    )}
-                  </path>
-                )}
-                {/* Piping Tee Node */}
-                <circle cx="988" cy="240" r="5" fill="#0284c7" />
-              </g>
-            </>
-          )}
-
-          {/* Interactive White Equipment Cards with SVG Symbols */}
-          {ids.map(id => {
-            const [x, y] = nodePositions[id];
-            const status = snapshot.equipment[id]?.status || 'normal';
-            const isSel = selected === id;
-            const statusLabel =
-              status === 'critical' ? 'Fault' : status === 'warning' ? 'Elevated ΔP' : 'Normal';
-            const statusColor =
-              status === 'critical' ? '#ef4444' : status === 'warning' ? '#f59e0b' : '#2563eb';
-            const tag = ASSET_TAGS[id];
-            const metricPreview = getMetricPreview(id);
-
-            return (
-              <g
-                key={id}
-                transform={`translate(${x} ${y})`}
-                role="button"
-                tabIndex={0}
-                aria-label={`${names[id]}, ${status}. View equipment details`}
-                aria-pressed={isSel}
-                onClick={() => onSelect(id)}
-                onFocus={() => setFocused(id)}
-                onBlur={() => setFocused(null)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onSelect(id);
-                  }
-                }}
-                style={{ cursor: 'pointer', outline: 'none' }}
-              >
-                {/* Active Selection Glow Ring */}
-                {isSel && (
-                  <rect
-                    x="-4"
-                    y="-4"
-                    width="160"
-                    height="104"
-                    rx="19"
-                    fill="none"
-                    stroke="#00f0ff"
-                    strokeWidth="2.5"
-                    opacity="0.9"
-                  />
-                )}
-
-                {/* White Card Body */}
-                <rect
-                  width="152"
-                  height="96"
-                  rx="16"
-                  fill={isSel ? '#f0f9ff' : '#ffffff'}
-                  stroke={isSel ? '#0284c7' : '#dbe5de'}
-                  strokeWidth={isSel ? 2 : 1.2}
-                  filter="url(#schematic-card-shadow)"
-                />
-
-                {/* Engineering Asset Tag (Top-Left) */}
-                <text
-                  x="12"
-                  y="18"
-                  fill="#64748b"
-                  fontSize="9.5"
-                  fontWeight="700"
-                  fontFamily="Inter, system-ui, sans-serif"
-                  letterSpacing="0.6"
-                >
-                  {tag}
-                </text>
-
-                {/* Status Dot with Soft Outer Ring (Top-Right) */}
-                <circle cx="138" cy="16" r="7" fill={statusColor} opacity="0.16" />
-                <circle cx="138" cy="16" r="4.5" fill={statusColor} />
-
-                {/* Equipment Vector Symbol */}
-                <EquipmentSymbol id={id} />
-
-                {/* Equipment Title Inside Card */}
-                <text
-                  x="76"
-                  y="74"
-                  textAnchor="middle"
-                  fill="#0f172a"
-                  fontSize="13"
-                  fontWeight="650"
-                  fontFamily="Inter, system-ui, -apple-system, sans-serif"
-                >
-                  {names[id]}
-                </text>
-
-                {/* Live Real-Time Telemetry Reading Subtitle */}
-                <text
-                  x="76"
-                  y="88"
-                  textAnchor="middle"
-                  fill="#64748b"
-                  fontSize="10"
-                  fontWeight="500"
-                  fontFamily="Inter, system-ui, -apple-system, sans-serif"
-                >
-                  {metricPreview}
-                </text>
-
-                {/* Status Text Directly Underneath Card (Matching Picture 1: "Normal") */}
-                <text
-                  x="76"
-                  y="118"
-                  textAnchor="middle"
-                  fill={statusColor}
-                  fontSize="13"
-                  fontWeight="600"
-                  fontFamily="Inter, system-ui, -apple-system, sans-serif"
-                >
-                  {statusLabel}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-
-      {/* 3. BOTTOM FOOTER BAR (Matching Picture 1) */}
-      <div className="schematic-footer-bar">
-        <span className="schematic-footer-status">
-          {animate
-            ? 'SYSTEM NOMINAL · SCADA TELEMETRY STREAMING'
-            : 'Visual motion paused · live readings continue'}
-        </span>
-        <button
-          type="button"
-          className="schematic-footer-btn"
-          onClick={onSwitchTo3D}
-          aria-label="Switch to 3D installation view"
-        >
-          <Box size={14} />
-          <span>3D installation view</span>
-        </button>
-      </div>
-    </div>
-  );
+  function route(d: string, active: boolean, color = '#4260c8') { return <g aria-hidden="true"><path d={d} fill="none" stroke={active ? color : '#c5c8d2'} strokeWidth="6" strokeLinecap="round" />{active && <path d={d} fill="none" stroke="#eff3ff" strokeWidth="3" strokeDasharray="3 14">{animate && <animate attributeName="stroke-dashoffset" from="0" to="-34" dur="1s" repeatCount="indefinite" />}</path>}</g>; }
+  const tankLevel = snapshot.metrics.tankLevel.value;
+  return <div className="scene-schematic" style={{ padding: '18px 10px', minHeight: compact ? 480 : 370, display: 'grid', alignItems: 'center', background:immersive?'#171b29':undefined }}>
+    <svg viewBox={compact ? '0 0 390 610' : '0 0 880 400'} style={{ width: '100%', maxWidth: compact ? 440 : undefined, margin: '0 auto', maxHeight: compact ? undefined : 435 }} role="group" aria-label="Interactive two dimensional installation schematic">
+      <title>MAXIS installation schematic</title>
+      <desc>Rainwater flows through the pump, membrane and ultraviolet treatment to the community. Mains is the backup route. Select equipment or use the equipment buttons below.</desc>
+      <rect x="10" y="8" width={compact ? 370 : 860} height={compact ? 595 : 382} rx="20" fill={immersive?'#262b3a':'#edeef3'} />
+      {route(compact ? 'M 90 208 H 300 V 368 H 90 V 528' : 'M 100 188 H 780', rain)}
+      {route(compact ? 'M 300 528 H 90' : 'M 690 328 H 855 V 188 H 780', mains)}
+      {route(compact ? 'M 90 63 H 180 V 120 H 300 V 208' : 'M 270 63 V 188', snapshot.connected && (snapshot.metrics.solarPower.value ?? 0) > 0, '#d9b259')}
+      {ids.map(id => {
+        const [x, y] = nodes[id]; const status = snapshot.equipment[id].status;const fault=status==='warning'||status==='critical';
+        return <g key={id} transform={`translate(${x} ${y})`} role="button" tabIndex={0} aria-label={`${names[id]}, ${status}. View equipment details`} aria-pressed={selected === id} onClick={() => onSelect(id)} onFocus={() => setFocused(id)} onBlur={() => setFocused(null)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(id); } }} style={{ cursor: 'pointer' }}>
+          {focused === id && <rect x="-4" y="-4" width="138" height="84" rx="16" fill="none" stroke="#203270" strokeWidth="3" />}
+          {fault&&<rect x="-4" y="-4" width="138" height="84" rx="16" fill="none" stroke={tones[status]} strokeWidth="4" opacity=".8"/>}
+          <rect width="130" height="76" rx="12" fill={status==='critical'?'#ffe5e1':status==='warning'?'#fff2d7':selected === id ? '#e5e9f8' : '#ffffff'} stroke={fault?tones[status]:selected === id ? '#2e479d' : '#cdd1de'} strokeWidth={fault?2.5:selected === id ? 2 : 1} />
+          <circle cx="114" cy="14" r="4" fill={tones[status]} />
+          <g transform="translate(10 0)" aria-hidden="true">{id === 'tank' ? <><rect x="43" y="12" width="25" height="34" rx="4" fill="#eef0f7" stroke="#a3acc9" /><rect x="44" y={45 - 31 * ((tankLevel ?? 50) / 100)} width="23" height={31 * ((tankLevel ?? 50) / 100)} rx="2" fill={snapshot.metrics.tankLevel.quality === 'valid' ? '#607ad1' : '#a3aac3'} /></> : id === 'solar' ? <><path d="M 35 38 L 43 15 H 73 L 81 38 Z" fill="#243365" /><path d="M 47 16 L 43 37 M 58 16 V 37 M 69 16 L 73 37 M 39 28 H 78" fill="none" stroke="#808cb4" strokeWidth="1" /></> : id === 'homes' ? <><path d="M 39 27 L 56 13 L 74 27 V 46 H 39 Z" fill="#c8cddf" /><path d="M 36 28 L 56 11 L 77 28" fill="none" stroke="#525d84" strokeWidth="3" /><rect x="52" y="31" width="9" height="15" rx="1" fill="#757e9d" /></> : id === 'membrane' ? <>{[39, 53, 67].map(x => <g key={x}><rect x={x} y="15" width="10" height="31" rx="3" fill="#e8eaf3" stroke="#5f6fa5" /><rect x={x} y="15" width="10" height="7" rx="2" fill={status === 'critical' || status === 'warning' ? tones[status] : '#5f6fa5'} /></g>)}</> : id === 'uv' ? <><rect x="33" y="22" width="47" height="18" rx="9" fill="#e8ecfb" stroke="#949fc4" /><path d="M 39 31 H 73" stroke={rain ? '#93a5e0' : '#aaacb4'} strokeWidth="4" /></> : id === 'pump' ? <><circle cx="55" cy="31" r="15" fill="#e8eaf3" stroke="#5f6fa5" strokeWidth="2" /><path d="M 43 31 H 67 M 55 19 V 43" stroke="#5f6fa5" strokeWidth="3" /></> : <><path d="M 35 35 H 78 M 56 35 V 19" stroke="#717b9b" strokeWidth="6" /><circle cx="56" cy="18" r="10" fill="none" stroke="#4e5f99" strokeWidth="3" /></>}</g>
+          <text x="65" y="63" textAnchor="middle" fill="#333b56" fontFamily="inherit" fontSize={compact ? '15' : '14'} fontWeight="600">{names[id]}</text>
+          <text x="65" y="99" textAnchor="middle" fill={textTones[status]} fontFamily="inherit" fontSize={compact ? '15' : '14'}>{status.charAt(0).toUpperCase() + status.slice(1)}</text>
+        </g>;
+      })}
+    </svg>
+  </div>;
 }
 
 /* =========================================================================
@@ -1605,34 +875,11 @@ export default function InstallationScene(props: Props) {
     { action: 'out', label: 'Zoom out', aria: 'Zoom out', icon: ZoomOut },
     { action: 'reset', label: 'Reset view', aria: 'Reset view', icon: RotateCcw },
   ];
-
-  if (mode === '2d') {
-    return schematic;
-  }
-
-  return (
-    <div
-      ref={container}
-      className="installation-scene modern-digital-twin"
-      style={{
-        position: 'relative',
-        borderRadius: 16,
-        overflow: 'hidden',
-        background: '#0f172a',
-      }}
-    >
-      {/* 1. TOP-LEFT OVERLAY: Live Digital Clock & Location Dropdown (Picture 2) */}
-      <div className="scene-top-left-overlay">
-        <div className="dt-clock-pill">
-          <Clock size={14} className="dt-clock-icon" />
-          <span className="dt-clock-time">{formattedTime}</span>
-          <span className="dt-clock-date">{formattedDate}</span>
-        </div>
-        <div className="dt-location-pill">
-          <MapPin size={13} className="dt-location-icon" />
-          <span className="dt-location-name">Township Water System | Sector 4</span>
-          <ChevronDown size={13} />
-        </div>
+  return <div ref={container} className="installation-scene" style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', background: '#f0f1f6', border: '1px solid #dbdee7' }}>
+    <div className="scene-toolbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '16px 18px', flexWrap: 'wrap', position: 'relative', zIndex: 11, borderBottom: '1px solid #dee1eb' }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 12, color: '#474d61', flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', gap: 7, alignItems: 'center' }}><Droplets size={15} aria-hidden="true" color="#2f4aa4" />Water flow</span>
+        <span style={{ display: 'flex', gap: 7, alignItems: 'center' }}><Sun size={15} aria-hidden="true" color="#946c20" />Solar energy</span>
       </div>
 
       {/* 2. TOP-RIGHT OVERLAY: Action Buttons (Picture 2) */}
@@ -1668,123 +915,29 @@ export default function InstallationScene(props: Props) {
           <LayoutGrid size={15} />
         </button>
       </div>
-
-      {/* 3. 3D CANVAS */}
-      <SceneBoundary
-        key={mode}
-        fallback={schematic}
-        onError={() => {
-          setRenderFailed(true);
-          setMode('2d');
-        }}
-      >
-        <div className="scene-stage" style={{ height: compact ? 420 : 580, width: '100%' }}>
-          <Canvas
-            shadows
-            frameloop={animate ? 'always' : 'demand'}
-            camera={{ position: cameraPosition, fov: 38, near: 0.1, far: 120 }}
-            dpr={[1, 1.5]}
-            gl={{ antialias: true, powerPreference: 'high-performance' }}
-            role="group"
-            aria-label="Interactive 3D digital twin"
-          >
-            <Suspense fallback={null}>
-              <Scene
-                {...props}
-                view={view}
-                animate={animate}
-                compact={compact || Boolean(props.immersive)}
-                immersive={props.immersive}
-              />
-            </Suspense>
-          </Canvas>
-        </div>
-      </SceneBoundary>
-
-      {/* 4. VERTICAL CAMERA CONTROLS HUD (Right side, zero overlay with minimap) */}
-      <div className="scene-camera-hud" role="toolbar" aria-label="3D Viewport Controls">
-        {cameraButtons.map(({ action, label, aria, icon: Icon }) => (
-          <button
-            key={action}
-            type="button"
-            className="dt-hud-btn"
-            aria-label={aria}
-            title={label}
-            onClick={() => setView(current => ({ action, sequence: current.sequence + 1 }))}
-          >
-            <Icon size={15} aria-hidden="true" />
-          </button>
-        ))}
-        <div className="dt-hud-divider" />
-        <button
-          type="button"
-          className="dt-hud-btn"
-          onClick={() => setPaused(v => !v)}
-          aria-label={animate ? 'Pause motion' : 'Resume motion'}
-          title={animate ? 'Pause motion' : 'Resume motion'}
-        >
-          {animate ? <Pause size={15} /> : <Play size={15} />}
-        </button>
-      </div>
-
-      {/* 5. BOTTOM-LEFT OVERLAY: Mini-map Radar Widget (Picture 2) */}
-      <div className="scene-bottom-left-overlay">
-        <div className="dt-minimap-card" title="Site Precinct Radar Mini-Map">
-          <div className="dt-minimap-header">
-            <Compass size={12} />
-            <span>PRECINCT RADAR</span>
-          </div>
-          <svg viewBox="0 0 100 100" className="dt-minimap-svg">
-            {/* Roads */}
-            <rect x="0" y="70" width="100" height="18" fill="#334155" />
-            <rect x="18" y="0" width="18" height="100" fill="#334155" />
-            {/* Road lines */}
-            <line x1="0" y1="79" x2="100" y2="79" stroke="#64748b" strokeDasharray="3 3" strokeWidth="1" />
-            <line x1="27" y1="0" x2="27" y2="100" stroke="#64748b" strokeDasharray="3 3" strokeWidth="1" />
-            {/* Treatment Plant Area */}
-            <rect x="42" y="15" width="50" height="48" rx="4" fill="#1e293b" stroke="#0ea5e9" strokeWidth="1" />
-            {/* Equipment Pings */}
-            {ids.map(eq => {
-              const [x, , z] = positions[eq];
-              const mapX = 67 + x * 4;
-              const mapY = 40 + z * 4;
-              const isSel = props.selected === eq;
-              return (
-                <g key={eq} onClick={() => props.onSelect(eq)} style={{ cursor: 'pointer' }}>
-                  {isSel && (
-                    <circle cx={mapX} cy={mapY} r="7" fill="none" stroke="#00f0ff" strokeWidth="1.5" opacity="0.8">
-                      <animate attributeName="r" values="3;9" dur="1.4s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" values="1;0" dur="1.4s" repeatCount="indefinite" />
-                    </circle>
-                  )}
-                  <circle cx={mapX} cy={mapY} r={isSel ? 3.5 : 2.5} fill={isSel ? '#00f0ff' : '#94a3b8'} />
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-      </div>
-
-      {/* 6. BOTTOM EQUIPMENT QUICK BAR (Docked beside minimap starting at left: 148px) */}
-      <div className="scene-bottom-equipment-bar" role="group" aria-label="Select equipment">
-        {ids.map(id => {
-          const isSel = props.selected === id;
-          const st = props.snapshot.equipment[id]?.status || 'normal';
-          return (
-            <button
-              key={id}
-              type="button"
-              className={`dt-quick-eq-btn ${isSel ? 'selected' : ''}`}
-              onClick={() => props.onSelect(id)}
-              aria-pressed={isSel}
-            >
-              <span className={`dt-eq-dot ${st}`} />
-              <span>{names[id]}</span>
-            </button>
-          );
-        })}
-      </div>
     </div>
-  );
+    {renderFailed && <p role="status" style={{ margin: 0, padding: '12px 18px 0', color: '#525767', fontSize: 12 }}>The 3D view could not render. The schematic shows the same live equipment; you can retry 3D above.</p>}
+    {!supported && <p style={{ margin: 0, padding: '12px 18px 0', color: '#525767', fontSize: 12 }}>This device uses the interactive schematic. Live readings and equipment details remain available.</p>}
+    {mode === '3d' ? <SceneBoundary key={mode} fallback={schematic} onError={() => { setRenderFailed(true); setMode('2d'); }}>
+      <div className="scene-stage" style={{ height: compact ? 400 : 470 }}>
+        <Canvas shadows frameloop={animate ? 'always' : 'demand'} camera={{ position: cameraPosition, fov: 39, near: 0.1, far: 100 }} dpr={[1, 1.5]} gl={{ antialias: true, powerPreference: 'high-performance' }} role="group" aria-label="Interactive 3D water treatment installation. Equipment and camera controls are available below">
+          <Suspense fallback={null}><Scene {...props} view={view} animate={animate} compact={compact||Boolean(props.immersive)} immersive={props.immersive} /></Suspense>
+        </Canvas>
+      </div>
+    </SceneBoundary> : schematic}
+    {mode === '3d' && <div className="scene-view-controls" role="group" aria-label="Installation camera controls" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, padding: '4px 18px 16px' }}>
+      {cameraButtons.map(({ action, label, aria, icon: Icon }) => <button key={action} type="button" style={{ ...baseStyle, minHeight: 36, padding: '6px 10px' }} aria-label={aria} title={aria} onClick={() => setView(current => ({ action, sequence: current.sequence + 1 }))}><Icon size={15} aria-hidden="true" />{label}</button>)}
+    </div>}
+    <div className="scene-caption" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 18px 16px', gap: 12, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, color: '#525767', lineHeight: 1.5 }}>{!animate ? 'Visual motion paused · live readings continue' : mode === '3d' ? 'Rotate with the controls or drag · select equipment to inspect' : 'Select equipment to inspect live and historical readings'}</span>
+      <span style={{ fontSize: 12, color: '#374060', background: '#e0e3ec', borderRadius: 20, padding: '5px 10px', fontWeight: 500 }}>3D installation view</span>
+    </div>
+    <div className="scene-equipment-list" role="group" aria-label="Select installation equipment" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, background: 'rgba(255,255,255,.75)', borderTop: '1px solid #dbdee7', padding: 16 }}>
+      {ids.map((id, index) => <button className="scene-equipment-button" key={id} type="button" onClick={() => props.onSelect(id)} aria-pressed={props.selected === id} aria-label={`${names[id]}, ${props.snapshot.equipment[id].status}. View details`} style={{ ...baseStyle, justifyContent: 'flex-start', gap: 9, padding: '10px 12px', minHeight: 54, background: props.selected === id ? '#e7eaf6' : '#ffffff', border: `1px solid ${props.selected === id ? '#596aa4' : '#d9dbe4'}`, textAlign: 'left' }}>
+        <span aria-hidden="true" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, background: props.selected === id ? '#cdd4eb' : '#edeef3', color: '#424963', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 600 }}>{index + 1}</span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}><span style={{ fontWeight: 600, fontSize: 12 }}>{names[id]}</span><span style={{ color: listTones[props.snapshot.equipment[id].status], textTransform: 'capitalize', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}><span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: '50%', background: tones[props.snapshot.equipment[id].status] }} />{props.snapshot.equipment[id].status}</span></span>
+      </button>)}
+    </div>
+  </div>;
 }
 

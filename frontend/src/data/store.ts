@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import type { Alert, Command, CommandResult, DataSource, EquipmentId, EventRecord, HistoryPoint, HistoryRange, MetricKey, Scenario, Snapshot, Source, StoreState, Thresholds } from '../types';
+import type { Alert, AppMode, Command, CommandResult, DataSource, EquipmentId, EventRecord, HistoryPoint, HistoryRange, MetricKey, Override, Quality, Scenario, Snapshot, Source, StoreState, Thresholds } from '../types';
+import { apiSource } from './api';
 import { CLEAN_BASELINE, EQUIPMENT, INSTALLATION_ID, METRICS, SCENARIOS, SCENARIO_LABELS, TANK_CAPACITY_LITRES } from './catalog';
 export { CLEAN_BASELINE, EQUIPMENT, INSTALLATION_ID, METRICS, SCENARIOS, SCENARIO_LABELS, SCENARIO_DESCRIPTIONS, TANK_CAPACITY_LITRES } from './catalog';
 
@@ -78,7 +79,7 @@ export class MaxisStore implements DataSource {
       ],
       orders: [],
       tasks: [{ id: this.id('task'), equipment: 'uv', description: 'Inspect UV lamp and clean the quartz sleeve', status: 'open', createdAt }],
-      incidents: [], thresholds: { ...DEFAULT_THRESHOLDS }, command: null,
+      incidents: [], thresholds: { ...DEFAULT_THRESHOLDS }, overrides: [], command: null,
     };
     this.restore();
     this.state.snapshot = this.makeSnapshot(time, this.state.snapshot.scenario, this.state.snapshot.source, this.state.snapshot.stopped);
@@ -181,13 +182,23 @@ export class MaxisStore implements DataSource {
     };
     if (!connected && !this.staleSince) this.staleSince = this.state?.snapshot.timestamp ?? stamp;
     if (connected) this.staleSince = null;
+    // A forced reading replaces the simulated one before anything derives from it, so the
+    // equipment badge, the alert and the event log all follow with no extra code.
+    const forced = {} as Partial<Record<MetricKey, Override>>;
+    for (const override of this.activeOverrides(time)) {
+      forced[override.metric] = override;
+      values[override.metric] = override.quality === 'valid' ? override.value : null;
+    }
     const metrics = {} as Snapshot['metrics'];
     for (const metric of Object.keys(METRICS) as MetricKey[]) {
+      const override = forced[metric];
       const value = values[metric];
       const available = connected && value !== null;
       metrics[metric] = { installationId: INSTALLATION_ID, equipmentId: METRICS[metric].equipment, metric,
-        value: available ? rounding(value, metric.includes('Energy') || metric.includes('Usage') ? 6 : 3) : null,
-        unit: METRICS[metric].unit, quality: !connected ? 'stale' : available ? 'valid' : 'unavailable', timestamp: connected ? stamp : this.staleSince!,
+        value: override ? override.value : available ? rounding(value, metric.includes('Energy') || metric.includes('Usage') ? 6 : 3) : null,
+        unit: METRICS[metric].unit,
+        quality: override ? override.quality : !connected ? 'stale' : available ? 'valid' : 'unavailable',
+        timestamp: override || connected ? stamp : this.staleSince!,
       };
     }
     const equipment = {} as Snapshot['equipment'];
@@ -239,6 +250,7 @@ export class MaxisStore implements DataSource {
 
   /** Explicit stepping makes cumulative calculations and demo scenarios deterministic in tests. */
   step = (time = this.now()) => {
+    this.expireOverrides(time);
     const { scenario, source, stopped } = this.state.snapshot;
     const seconds = Math.max(0, time - this.lastTick) / 1000;
     const previous = this.state.snapshot;
@@ -292,6 +304,60 @@ export class MaxisStore implements DataSource {
     }
     this.state.alerts = alerts.slice(0, 100);
   }
+
+  // ----------------------------------------------------------------- overrides
+  // The demo-side twin of the engine's override map (DESIGN.md section 6.1). Never
+  // persisted: an override surviving a reload is a trap.
+
+  private activeOverrides(time: number) {
+    return (this.state?.overrides ?? []).filter(override => new Date(override.expiresAt).getTime() > time);
+  }
+
+  private expireOverrides(time: number) {
+    const live = this.activeOverrides(time);
+    if (live.length === this.state.overrides.length) return;
+    for (const override of this.state.overrides.filter(item => !live.includes(item))) {
+      this.addEvent('scenario', `Demo override expired: ${METRICS[override.metric].label}.`, 'info', METRICS[override.metric].equipment);
+    }
+    this.state.overrides = live;
+  }
+
+  /** Recompute from the current overrides and log the change, mirroring `set_override`. */
+  private applyOverrides(overrides: Override[], message: string, level: EventRecord['level'], equipment?: EquipmentId) {
+    const previous = this.state.snapshot;
+    this.state.overrides = overrides;
+    this.state.snapshot = this.makeSnapshot(this.now(), previous.scenario, previous.source, previous.stopped);
+    this.updateHistory(this.state.snapshot);
+    this.addEvent('scenario', message, level, equipment);
+    this.recordTransitions(previous, this.state.snapshot);
+    this.reconcileAlerts();
+    this.notify(true);
+  }
+
+  setOverride = (metric: MetricKey, value: number | null, quality: Quality = 'valid', ttlSeconds = 300): Result => {
+    if (!(metric in METRICS)) return { ok: false, message: 'Choose a reading to override.' };
+    if (quality === 'valid' && (value === null || !Number.isFinite(value))) return { ok: false, message: 'A forced reading needs a number. Enter a value, or force the signal stale or unavailable instead.' };
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0 || ttlSeconds > 3600) return { ok: false, message: 'Choose a duration between 1 second and 1 hour.' };
+    const info = METRICS[metric];
+    const override: Override = { metric, value: quality === 'valid' ? rounding(value!, 3) : null, quality, expiresAt: new Date(this.now() + ttlSeconds * 1000).toISOString() };
+    const forced = quality === 'valid' ? `${override.value} ${info.unit}` : quality === 'stale' ? 'a stale signal' : 'no signal';
+    this.applyOverrides([override, ...this.state.overrides.filter(item => item.metric !== metric)],
+      `Demo override set: ${info.label} forced to ${forced} for ${Math.round(ttlSeconds)}s.`, 'warning', info.equipment);
+    return { ok: true, message: `${info.label} is forced to ${forced} for the next ${Math.round(ttlSeconds / 60)} minute${ttlSeconds >= 120 ? 's' : ''}.` };
+  };
+
+  clearOverride = (metric: MetricKey): Result => {
+    if (!this.state.overrides.some(override => override.metric === metric)) return { ok: false, message: 'No override is active on that reading.' };
+    this.applyOverrides(this.state.overrides.filter(override => override.metric !== metric),
+      `Demo override cleared: ${METRICS[metric].label}.`, 'info', METRICS[metric].equipment);
+    return { ok: true, message: `${METRICS[metric].label} is back on simulated readings.` };
+  };
+
+  clearOverrides = (): Result => {
+    if (!this.state.overrides.length) return { ok: false, message: 'No overrides are active.' };
+    this.applyOverrides([], `Demo overrides cleared: ${this.state.overrides.map(override => METRICS[override.metric].label).join(', ')}.`, 'info');
+    return { ok: true, message: 'All readings are back on simulated values.' };
+  };
 
   setScenario = (scenario: Scenario) => {
     if (!SCENARIOS.includes(scenario)) return;
@@ -438,12 +504,41 @@ export class MaxisStore implements DataSource {
     advanceOrder: this.advanceOrder,
     reportIncident: this.reportIncident,
     setThresholds: this.setThresholds,
+    setOverride: this.setOverride,
+    clearOverride: this.clearOverride,
+    clearOverrides: this.clearOverrides,
     resetDemo: this.resetDemo,
   };
 }
 
 export const dataSource = new MaxisStore();
+
+/** Demo and live sources expose the same surface; `mode` picks which one `useMaxis` reads.
+ *  Switching re-subscribes every component without remounting. See DESIGN.md section 7. */
+type Switchable = Pick<MaxisStore, 'subscribeState' | 'getState' | 'actions' | 'getHistory' | 'subscribe'>;
+let active: Switchable = dataSource;
+const switchListeners = new Set<() => void>();
+
+export function setDataMode(mode: AppMode) {
+  const next: Switchable = mode === 'live' ? (apiSource as unknown as Switchable) : dataSource;
+  if (next === active) return;
+  active = next;
+  switchListeners.forEach(listener => listener());
+}
+export const activeSource = () => active;
+
+function subscribeActive(callback: () => void) {
+  let unsubscribe = active.subscribeState(callback);
+  const onSwitch = () => { unsubscribe(); unsubscribe = active.subscribeState(callback); callback(); };
+  switchListeners.add(onSwitch);
+  return () => { unsubscribe(); switchListeners.delete(onSwitch); };
+}
+
+/** The live source has no state until its first fetch resolves; fall back to the demo
+ *  store's shape so every component renders before the backend answers. */
+const snapshotState = () => active.getState() ?? dataSource.getState();
+
 export function useMaxis() {
-  const state = useSyncExternalStore(dataSource.subscribeState, dataSource.getState, dataSource.getState);
-  return { ...state, actions: dataSource.actions };
+  const state = useSyncExternalStore(subscribeActive, snapshotState, snapshotState);
+  return { ...state, actions: active.actions };
 }

@@ -60,6 +60,9 @@ export interface SupplyOrder { id: string; itemId: string; quantity: number; sta
 export interface MaintenanceTask { id: string; equipment: EquipmentId; description: string; status: 'open' | 'completed'; createdAt: string; completedAt?: string; suppliesUsed?: { itemId: string; quantity: number }[]; }
 export interface Incident { id: string; description: string; source: 'resident' | 'operator'; status: 'open' | 'resolved'; createdAt: string; }
 export interface Thresholds { turbidityOut: number; pressureDelta: number; lowTank: number; }
+/** A forced reading, for demonstrating a failure without waiting for one. Ephemeral by
+ *  design -- see DESIGN.md section 6.1; the backend keeps the same shape. */
+export interface Override { metric: MetricKey; value: number | null; quality: Quality; expiresAt: string; }
 export interface StoreState {
   snapshot: Snapshot;
   history: Snapshot[];
@@ -70,6 +73,7 @@ export interface StoreState {
   tasks: MaintenanceTask[];
   incidents: Incident[];
   thresholds: Thresholds;
+  overrides: Override[];
   command: CommandResult | null;
 }
 export interface DataSource {
