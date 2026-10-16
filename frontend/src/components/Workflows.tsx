@@ -13,7 +13,7 @@ const formatDate = (date: string) => new Date(date).toLocaleString('en-MY', { ti
 const equipmentName = (id: EquipmentId) => equipment.find(item => item.id === id)?.label ?? id;
 const readingText = (reading: MetricReading, digits = 2) => reading.value === null ? '—' : reading.value.toFixed(digits);
 type Feedback = { ok: boolean; message: string; field?: string };
-const chartColors = { water: '#2b3e8d', filtered: '#1fcf04', baseline: '#5a67a9', warning: '#985e00', text: '#4b5684', grid: '#e5e7ee' };
+const chartColors = { water: '#2b3e8d', filtered: '#1fcf04', baseline: '#5a67a9', warning: '#985e00', text: '#52586d', grid: '#e5e7ee' };
 const maintenanceTabs = [{ id: 'tasks', label: 'Service tasks', icon: ClipboardList }, { id: 'inventory', label: 'Inventory', icon: Package }, { id: 'orders', label: 'Supply orders', icon: ShoppingCart }, { id: 'records', label: 'Activity & incidents', icon: Clock3 }] as const;
 const required = <span className="required-marker" aria-hidden="true"> *</span>;
 // Failure injection, driven by the engine's per-metric overrides (DESIGN.md section 6.1).
