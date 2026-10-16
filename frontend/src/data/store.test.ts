@@ -247,6 +247,35 @@ describe('operator workflows and persistence', () => {
     expect(makeStore(storage).getState().snapshot.scenario).toBe('normal');
   });
 
+  it('raises an alert from a forced reading and releases it when the override expires', () => {
+    const store = makeStore();
+    expect(store.setOverride('turbidityOut', 2.4, 'valid', 120).ok).toBe(true);
+    expect(store.getState().snapshot.metrics.turbidityOut.value).toBe(2.4);
+    expect(store.getState().snapshot.equipment.membrane.status).toBe('warning');
+    expect(store.getState().alerts.filter(alert => alert.status === 'active' && alert.title.includes('turbidity'))).toHaveLength(1);
+    expect(store.getState().events.some(event => event.message.includes('Demo override set'))).toBe(true);
+    advance(store, 121_000);
+    expect(store.getState().overrides).toHaveLength(0);
+    expect(store.getState().snapshot.metrics.turbidityOut.value).toBeCloseTo(CLEAN_BASELINE.turbidityOut, 1);
+    expect(store.getState().alerts.filter(alert => alert.status === 'active')).toHaveLength(0);
+    expect(store.getState().events.some(event => event.message.includes('Demo override expired'))).toBe(true);
+  });
+
+  it('forces quality without a value, and never persists an override', () => {
+    const storage = new MemoryStorage();
+    const store = makeStore(storage);
+    expect(store.setOverride('turbidityOut', null, 'valid', 120).ok).toBe(false);
+    expect(store.setOverride('pressureIn', 2.5, 'valid', 7200).ok).toBe(false);
+    expect(store.getState().overrides).toHaveLength(0);
+    store.setOverride('pressureIn', null, 'stale', 120);
+    expect(store.getState().snapshot.metrics.pressureIn.quality).toBe('stale');
+    expect(store.getState().snapshot.metrics.pressureIn.value).toBeNull();
+    expect(makeStore(storage).getState().overrides).toHaveLength(0);
+    expect(store.clearOverride('pressureIn').ok).toBe(true);
+    expect(store.clearOverride('pressureIn').ok).toBe(false);
+    expect(store.getState().snapshot.metrics.pressureIn.quality).toBe('valid');
+  });
+
   it('completes the presentation sequence from fault to acknowledged maintenance and recovery', async () => {
     const store = makeStore();
     store.setScenario('filter-degradation');

@@ -4016,3 +4016,113 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
     flex-basis: 100%;
   }
 }
+
+/* Failure simulation inside Operational controls. It sits below the command cards
+   and is visually separated from them: these controls force readings rather than
+   act on the installation, and must never read as another operator command. */
+.override-console {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px dashed #c9cfe8;
+  border-radius: 9px;
+  background: #f7f8fd;
+}
+.override-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.override-heading > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.override-heading svg { color: var(--brand-indigo-soft, #5a67a9); }
+.override-heading h3 {
+  margin: 0;
+  font-size: 12px;
+}
+.override-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.override-console > p {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #5a67a9;
+  line-height: 1.7;
+}
+.override-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 15px;
+}
+.override-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 62px;
+  padding: 11px 13px;
+  text-align: left;
+  border: 1px solid #dde1f0;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}
+.override-preset:hover { border-color: #2b3e8d; }
+.override-preset.selected {
+  border-color: #985e00;
+  background: #fff8eb;
+}
+.override-preset strong {
+  font-size: 13px;
+  color: #1b2450;
+}
+.override-preset span {
+  font-size: 12px;
+  color: #5a67a9;
+  line-height: 1.5;
+}
+.override-form {
+  margin-top: 16px;
+  align-items: start;
+}
+/* The metric name is the longest label in the row; give it twice the basis so it
+   is not truncated to "After-filter turbidity (N". */
+.override-form > .field-grow { flex: 2 1 230px; }
+.override-form > .button {
+  /* Match the control line: one label row (13px x 1.4) plus the field gap. */
+  margin-top: calc(13px * 1.4 + 7px);
+  min-height: 42px;
+}
+.override-form .field > :is(input, select) { min-height: 42px; }
+.override-form input:disabled {
+  background: #f1f2f8;
+  color: #8a93bb;
+  cursor: not-allowed;
+}
+.override-console .table-wrap {
+  margin-top: 16px;
+  border: 1px solid #dde1f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+.override-console .data-table .mono {
+  white-space: nowrap;
+}
+.override-console .data-table td .mono svg { vertical-align: -2px; }
+.override-console > .helper-text { margin-top: 14px; }
+@media(max-width:860px) {
+  .override-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media(max-width:560px) {
+  .override-presets { grid-template-columns: 1fr; }
+  /* Two selects per row truncate their own option text at this width; one field
+     per row keeps "Abnormal value" and the metric names readable. */
+  .override-form > .field { flex-basis: 100%; }
+  .override-form > .button { margin-top: 0; flex-basis: 100%; }
+}

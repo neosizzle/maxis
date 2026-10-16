@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Activity, AlertTriangle, Check, CheckCheck, ClipboardList, Clock3, Droplets, Gauge, Package, Plus, Power, Search, Settings2, ShieldCheck, ShoppingCart, Wifi, WifiOff, Wrench, X } from 'lucide-react';
+import { Activity, AlertTriangle, Check, CheckCheck, ClipboardList, Clock3, Droplets, FlaskConical, Gauge, Package, Plus, Power, Search, Settings2, ShieldCheck, ShoppingCart, Timer, Wifi, WifiOff, Wrench, X, Zap } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CLEAN_BASELINE, METRICS, useMaxis } from '../data/store';
-import type { Command, EquipmentId, HistoryRange, MetricKey, MetricReading, Snapshot } from '../types';
+import type { Command, EquipmentId, HistoryRange, MetricKey, MetricReading, Override, Quality, Snapshot } from '../types';
 
 const equipment: { id: EquipmentId; label: string }[] = [
   { id: 'tank', label: 'Rainwater tank' }, { id: 'pump', label: 'Pump' }, { id: 'membrane', label: 'Membrane filter' },
@@ -16,6 +16,27 @@ type Feedback = { ok: boolean; message: string; field?: string };
 const chartColors = { water: '#2b3e8d', filtered: '#1fcf04', baseline: '#5a67a9', warning: '#985e00', text: '#4b5684', grid: '#e5e7ee' };
 const maintenanceTabs = [{ id: 'tasks', label: 'Service tasks', icon: ClipboardList }, { id: 'inventory', label: 'Inventory', icon: Package }, { id: 'orders', label: 'Supply orders', icon: ShoppingCart }, { id: 'records', label: 'Activity & incidents', icon: Clock3 }] as const;
 const required = <span className="required-marker" aria-hidden="true"> *</span>;
+// Failure injection, driven by the engine's per-metric overrides (DESIGN.md section 6.1).
+// Each preset stages one condition the operator would otherwise have to wait for.
+const overrideQualities: { value: Quality; label: string; hint: string }[] = [
+  { value: 'valid', label: 'Abnormal value', hint: 'The sensor reports normally, but the number is out of range.' },
+  { value: 'stale', label: 'Stale signal', hint: 'The last reading stops updating; cards show when it was last seen.' },
+  { value: 'unavailable', label: 'No signal', hint: 'The reading drops out entirely, as a failed sensor would.' },
+];
+const overrideDurations = [60, 300, 900, 3600];
+const overridePresets: { id: string; label: string; detail: string; metric: MetricKey; value: number | null; quality: Quality; ttl: number }[] = [
+  { id: 'turbidity', label: 'Outlet turbidity breach', detail: 'After-filter turbidity forced to 2.40 NTU', metric: 'turbidityOut', value: 2.4, quality: 'valid', ttl: 300 },
+  { id: 'pressure', label: 'Membrane blockage', detail: 'Pressure difference forced to 1.60 bar', metric: 'pressureDelta', value: 1.6, quality: 'valid', ttl: 300 },
+  { id: 'tank', label: 'Rainwater reserve empty', detail: 'Tank level forced to 4%', metric: 'tankLevel', value: 4, quality: 'valid', ttl: 300 },
+  { id: 'flow', label: 'Supply flow lost', detail: 'Flow forced to 0 L/min', metric: 'flow', value: 0, quality: 'valid', ttl: 300 },
+  { id: 'sensor', label: 'Turbidity sensor failed', detail: 'After-filter turbidity reports no signal', metric: 'turbidityOut', value: null, quality: 'unavailable', ttl: 300 },
+  { id: 'stale', label: 'Pressure sensor stuck', detail: 'Before-filter pressure goes stale and locks controls', metric: 'pressureIn', value: null, quality: 'stale', ttl: 300 },
+];
+const overrideMetrics = (Object.keys(METRICS) as MetricKey[]).sort((a, b) => METRICS[a].label.localeCompare(METRICS[b].label));
+const countdown = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const overrideSummary = (override: Override) =>
+  override.quality === 'valid' ? `${override.value ?? '—'} ${METRICS[override.metric].unit}`
+    : override.quality === 'stale' ? 'Stale signal' : 'No signal';
 const positiveQuantityError = (value: string) => !Number.isInteger(Number(value)) || Number(value) <= 0 ? 'Enter a positive whole-number quantity, such as 1 or 2.' : '';
 function sampleTimeSeries<T>(points: T[], isValid: (point: T) => boolean) {
   if (points.length <= 288) return points;
@@ -191,12 +212,18 @@ export function MaintenancePage() {
 }
 
 export function AlertsPage() {
-  const { snapshot, history, alerts, events, command, actions } = useMaxis();
+  const { snapshot, history, alerts, events, command, overrides, actions } = useMaxis();
   const [heartbeatRange, setHeartbeatRange] = useState<HistoryRange>('6h');
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'acknowledged' | 'resolved'>('all');
   const [search, setSearch] = useState('');
   const [logLevel, setLogLevel] = useState('all');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [overrideMetric, setOverrideMetric] = useState<MetricKey>('turbidityOut');
+  const [overrideQuality, setOverrideQuality] = useState<Quality>('valid');
+  const [overrideValue, setOverrideValue] = useState('2.40');
+  const [overrideTtl, setOverrideTtl] = useState('300');
+  const [overrideFeedback, setOverrideFeedback] = useState<Feedback | null>(null);
+  const [overrideError, setOverrideError] = useState('');
   const pending = command?.status === 'pending';
   const [lastCommand, setLastCommand] = useState<Command | null>(null);
   const criticalDataValid = snapshot.connected && snapshot.metrics.pressureIn.quality === 'valid' && snapshot.metrics.pressureOut.quality === 'valid';
@@ -227,11 +254,56 @@ export function AlertsPage() {
     try { await actions.sendCommand(next); }
     catch { setFeedback({ ok: false, message: 'The command could not be sent. Check connection status and try again.' }); }
   };
+  const remainingSeconds = (override: Override) => Math.max(0, (new Date(override.expiresAt).getTime() - new Date(snapshot.timestamp).getTime()) / 1000);
+  const applyOverride = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = overrideQuality === 'valid' ? Number(overrideValue) : null;
+    if (overrideQuality === 'valid' && (!overrideValue.trim() || !Number.isFinite(value))) {
+      const message = 'Enter the number to force, such as 2.4.';
+      setOverrideError(message);
+      setOverrideFeedback({ ok: false, message: 'The override was not applied. Correct the highlighted value.', field: 'overrideValue' });
+      return;
+    }
+    setOverrideError('');
+    setOverrideFeedback(actions.setOverride(overrideMetric, value, overrideQuality, Number(overrideTtl)));
+  };
+  const applyPreset = (preset: typeof overridePresets[number]) => {
+    setOverrideMetric(preset.metric);
+    setOverrideQuality(preset.quality);
+    setOverrideValue(preset.value === null ? '' : String(preset.value));
+    setOverrideTtl(String(preset.ttl));
+    setOverrideError('');
+    setOverrideFeedback(actions.setOverride(preset.metric, preset.value, preset.quality, preset.ttl));
+  };
 
   return <div className="page-content">
     <div className="metric-grid workflow-metrics"><div className="metric-card"><div className="metric-top"><span className="metric-label">Active alerts</span><AlertTriangle aria-hidden="true" size={19} /></div><div className="metric-value">{active.length}</div><span className="metric-detail">{critical.length} critical · {unacknowledged.length} need acknowledgment</span></div><div className="metric-card"><div className="metric-top"><span className="metric-label">Device connectivity</span><Wifi aria-hidden="true" size={19} /></div><div className="metric-value">{devicesOnline}<span> / {equipment.length}</span></div><span className="metric-detail">Equipment reporting test data</span></div><div className="metric-card"><div className="metric-top"><span className="metric-label">Service heartbeat</span><Activity aria-hidden="true" size={19} /></div><div className="metric-value">{readingText(snapshot.metrics.heartbeat, 0)} <span>{snapshot.metrics.heartbeat.unit}</span></div><div className="metric-detail"><StatusBadge status={snapshot.metrics.heartbeat.quality} />Last signal {formatTime(snapshot.metrics.heartbeat.timestamp)}</div></div></div>
 
-    <section className="panel"><div className="panel-header"><div><h2>Operational controls</h2><p>Commands are simulated and recorded in the event log.</p></div><StatusBadge status={snapshot.stopped ? 'stopped' : 'normal'}>{snapshot.stopped ? 'Stop latched' : 'Treatment running'}</StatusBadge></div><div className="workflow-body"><div className="control-grid" aria-busy={pending}><div className="control-card"><div><Droplets aria-hidden="true" size={20} /><h3>Supply source</h3></div><p>Confirmed source: <strong>{snapshot.source === 'rainwater' ? 'Rainwater' : 'Mains backup'}</strong></p><div className="source-buttons">{(['rainwater', 'mains'] as const).map(source => <button className={`button ${snapshot.source === source ? 'button-primary' : 'button-secondary'}`} type="button" key={source} disabled={controlsDisabled || snapshot.source === source || !snapshot.sourceAvailability[source]} onClick={() => void issueCommand({ type: 'source', source })}>{source === 'rainwater' ? 'Rainwater' : 'Mains backup'}{snapshot.source === source && <Check aria-hidden="true" size={14} />}</button>)}</div><span className="text-muted">Rainwater {snapshot.sourceAvailability.rainwater ? 'available' : 'unavailable'} · Mains {snapshot.sourceAvailability.mains ? 'available' : 'unavailable'}</span></div><div className="control-card"><div><Power aria-hidden="true" size={20} /><h3>Emergency stop</h3></div><p>{snapshot.stopped ? 'Treatment remains stopped until an explicit reset.' : 'Halt the pump and UV treatment immediately.'}</p><div className="source-buttons"><button type="button" className="button button-danger" disabled={controlsDisabled || snapshot.stopped} onClick={() => void issueCommand({ type: 'stop' })}><Power aria-hidden="true" size={16} />Stop treatment</button><button type="button" className="button button-secondary" disabled={controlsDisabled || !snapshot.stopped} onClick={() => void issueCommand({ type: 'reset' })}>Reset & restart</button></div></div></div>{!criticalDataValid && <div className="notice warning"><WifiOff aria-hidden="true" size={18} /><p>Controls are unavailable while the connection or required pressure readings are stale or offline.</p></div>}{command && <div className={`command-result ${command.status}`} role={command.status === 'rejected' || command.status === 'timeout' ? 'alert' : 'status'} aria-atomic="true">{pending && <Clock3 aria-hidden="true" className="pending-indicator" size={17} />}<StatusBadge status={command.status} /><span>{command.message}</span><span className="text-muted">{formatTime(command.timestamp)}</span>{pending && <p className="field-hint">Controls are locked while the device confirms this request.</p>}{(command.status === 'rejected' || command.status === 'timeout') && lastCommand && <div><p className="field-hint">Restore telemetry or choose an available source, then retry.</p><button type="button" className="button button-secondary" disabled={controlsDisabled} onClick={() => void issueCommand(lastCommand)}>Retry command</button></div>}</div>}<FeedbackMessage feedback={feedback} /></div></section>
+    <section className="panel"><div className="panel-header"><div><h2>Operational controls</h2><p>Commands are simulated and recorded in the event log.</p></div><StatusBadge status={snapshot.stopped ? 'stopped' : 'normal'}>{snapshot.stopped ? 'Stop latched' : 'Treatment running'}</StatusBadge></div><div className="workflow-body"><div className="control-grid" aria-busy={pending}><div className="control-card"><div><Droplets aria-hidden="true" size={20} /><h3>Supply source</h3></div><p>Confirmed source: <strong>{snapshot.source === 'rainwater' ? 'Rainwater' : 'Mains backup'}</strong></p><div className="source-buttons">{(['rainwater', 'mains'] as const).map(source => <button className={`button ${snapshot.source === source ? 'button-primary' : 'button-secondary'}`} type="button" key={source} disabled={controlsDisabled || snapshot.source === source || !snapshot.sourceAvailability[source]} onClick={() => void issueCommand({ type: 'source', source })}>{source === 'rainwater' ? 'Rainwater' : 'Mains backup'}{snapshot.source === source && <Check aria-hidden="true" size={14} />}</button>)}</div><span className="text-muted">Rainwater {snapshot.sourceAvailability.rainwater ? 'available' : 'unavailable'} · Mains {snapshot.sourceAvailability.mains ? 'available' : 'unavailable'}</span></div><div className="control-card"><div><Power aria-hidden="true" size={20} /><h3>Emergency stop</h3></div><p>{snapshot.stopped ? 'Treatment remains stopped until an explicit reset.' : 'Halt the pump and UV treatment immediately.'}</p><div className="source-buttons"><button type="button" className="button button-danger" disabled={controlsDisabled || snapshot.stopped} onClick={() => void issueCommand({ type: 'stop' })}><Power aria-hidden="true" size={16} />Stop treatment</button><button type="button" className="button button-secondary" disabled={controlsDisabled || !snapshot.stopped} onClick={() => void issueCommand({ type: 'reset' })}>Reset & restart</button></div></div></div>{!criticalDataValid && <div className="notice warning"><WifiOff aria-hidden="true" size={18} /><p>Controls are unavailable while the connection or required pressure readings are stale or offline.</p></div>}{command && <div className={`command-result ${command.status}`} role={command.status === 'rejected' || command.status === 'timeout' ? 'alert' : 'status'} aria-atomic="true">{pending && <Clock3 aria-hidden="true" className="pending-indicator" size={17} />}<StatusBadge status={command.status} /><span>{command.message}</span><span className="text-muted">{formatTime(command.timestamp)}</span>{pending && <p className="field-hint">Controls are locked while the device confirms this request.</p>}{(command.status === 'rejected' || command.status === 'timeout') && lastCommand && <div><p className="field-hint">Restore telemetry or choose an available source, then retry.</p><button type="button" className="button button-secondary" disabled={controlsDisabled} onClick={() => void issueCommand(lastCommand)}>Retry command</button></div>}</div>}<FeedbackMessage feedback={feedback} />
+
+      <div className="override-console">
+        <div className="override-heading">
+          <div><FlaskConical aria-hidden="true" size={19} /><h3>Simulate abnormal readings</h3></div>
+          <div className="override-heading-actions"><StatusBadge status={overrides.length ? 'warning' : 'normal'}>{overrides.length ? `${overrides.length} override${overrides.length === 1 ? '' : 's'} active` : 'Readings unforced'}</StatusBadge>{overrides.length > 0 && <button type="button" className="button button-secondary button-small" onClick={() => setOverrideFeedback(actions.clearOverrides())}><X aria-hidden="true" size={14} />Clear all</button>}</div>
+        </div>
+        <p>Force a reading to a failure value instead of waiting for one. Alerts, equipment badges and the event log follow the forced value exactly as they would a measured one. Every override expires on its own and is recorded in the event log.</p>
+
+        <div className="override-presets" role="group" aria-label="Failure presets">
+          {overridePresets.map(preset => <button type="button" key={preset.id} className={`override-preset${overrides.some(override => override.metric === preset.metric && override.quality === preset.quality && override.value === preset.value) ? ' selected' : ''}`} onClick={() => applyPreset(preset)}><strong>{preset.label}</strong><span>{preset.detail}</span></button>)}
+        </div>
+
+        <form className="form-grid override-form" noValidate onSubmit={applyOverride}>
+          <label className="field field-grow"><span>Reading{required}</span><select aria-label="Reading to override" value={overrideMetric} onChange={event => { setOverrideMetric(event.target.value as MetricKey); setOverrideError(''); }}>{overrideMetrics.map(metric => <option value={metric} key={metric}>{METRICS[metric].label} ({METRICS[metric].unit})</option>)}</select></label>
+          <label className="field"><span>Failure type{required}</span><select aria-label="Failure type" value={overrideQuality} onChange={event => { setOverrideQuality(event.target.value as Quality); setOverrideError(''); }}>{overrideQualities.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+          <label className="field"><span>Forced value ({METRICS[overrideMetric].unit}){overrideQuality === 'valid' ? required : ''}</span><input id="overrideValue" type="number" step="any" inputMode="decimal" disabled={overrideQuality !== 'valid'} aria-invalid={Boolean(overrideError)} aria-describedby="overrideValue-message" value={overrideQuality === 'valid' ? overrideValue : ''} placeholder={overrideQuality === 'valid' ? 'e.g. 2.4' : 'Not used'} onChange={event => setOverrideValue(event.target.value)} onBlur={() => setOverrideError(overrideQuality === 'valid' && (!overrideValue.trim() || !Number.isFinite(Number(overrideValue))) ? 'Enter the number to force, such as 2.4.' : '')} /><FieldMessage id="overrideValue-message" error={overrideError} hint={overrideQualities.find(option => option.value === overrideQuality)!.hint} /></label>
+          <label className="field"><span>Expires after</span><select aria-label="Override duration" value={overrideTtl} onChange={event => setOverrideTtl(event.target.value)}>{overrideDurations.map(seconds => <option value={seconds} key={seconds}>{seconds < 3600 ? `${seconds / 60} minute${seconds === 60 ? '' : 's'}` : '1 hour'}</option>)}</select></label>
+          <button className="button button-primary" type="submit"><Zap aria-hidden="true" size={15} />Apply override</button>
+        </form>
+        <FeedbackMessage feedback={overrideFeedback} />
+
+        {overrides.length ? <div className="table-wrap"><table className="data-table"><caption>Active overrides · forced readings replace the simulated ones</caption><thead><tr><th scope="col">Reading</th><th scope="col">Forced to</th><th scope="col">Reported quality</th><th scope="col">Live value</th><th scope="col">Expires in</th><th scope="col">Action</th></tr></thead><tbody>{overrides.map(override => <tr key={override.metric}><td><strong>{METRICS[override.metric].label}</strong><span className="text-muted"> · {equipmentName(METRICS[override.metric].equipment)}</span></td><td>{overrideSummary(override)}</td><td><StatusBadge status={override.quality} /></td><td className="mono">{readingText(snapshot.metrics[override.metric], 2)}</td><td className="mono"><Timer aria-hidden="true" size={14} /> {countdown(remainingSeconds(override))}</td><td><button type="button" className="button button-secondary button-small" onClick={() => setOverrideFeedback(actions.clearOverride(override.metric))}><X aria-hidden="true" size={14} />Clear</button></td></tr>)}</tbody></table></div>
+          : <p className="text-muted helper-text">No overrides are active. Every reading comes from its own source.</p>}
+      </div></div></section>
 
     <section className="panel alert-center"><div className="panel-header"><div><h2>Alerts</h2><p>Updated {formatTime(snapshot.timestamp)} · Acknowledgment records receipt; the fault remains until its condition clears.</p></div><button type="button" className="button button-secondary button-small" disabled={!unacknowledged.length} onClick={() => unacknowledged.forEach(alert => actions.acknowledgeAlert(alert.id))}><CheckCheck aria-hidden="true" size={14} />Acknowledge all</button></div>
       <div className="alert-priority-grid" role="group" aria-label="Filter alerts"><button type="button" aria-pressed={filter === 'all'} className={`alert-priority-card all ${filter === 'all' ? 'selected' : ''}`} onClick={() => setFilter('all')}><strong>{alerts.length}</strong><span>All</span></button><button type="button" aria-pressed={filter === 'critical'} className={`alert-priority-card critical ${filter === 'critical' ? 'selected' : ''}`} onClick={() => setFilter('critical')}><strong>{critical.length}</strong><span>Critical</span></button><button type="button" aria-pressed={filter === 'warning'} className={`alert-priority-card warning ${filter === 'warning' ? 'selected' : ''}`} onClick={() => setFilter('warning')}><strong>{warnings.length}</strong><span>Warning</span></button><button type="button" aria-pressed={filter === 'acknowledged'} className={`alert-priority-card acknowledged ${filter === 'acknowledged' ? 'selected' : ''}`} onClick={() => setFilter('acknowledged')}><strong>{acknowledged.length}</strong><span>Acknowledged</span></button><button type="button" aria-pressed={filter === 'resolved'} className={`alert-priority-card resolved ${filter === 'resolved' ? 'selected' : ''}`} onClick={() => setFilter('resolved')}><strong>{resolved.length}</strong><span>Resolved</span></button></div>
