@@ -246,29 +246,32 @@ export default function DigitalTwinCards({
                   <stop offset="100%" stopColor="#0369a1" stopOpacity={0.8} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#334155" />
               <XAxis
                 dataKey="time"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#64748b', fontSize: 10 }}
+                tick={{ fill: '#94a3b8', fontSize: 10 }}
                 minTickGap={28}
               />
               <YAxis
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#64748b', fontSize: 10 }}
+                tick={{ fill: '#94a3b8', fontSize: 10 }}
                 domain={[0, 'auto']}
               />
               <Tooltip
                 formatter={(val: unknown) => [`${val} ${unit}`, METRICS[meta.primaryMetric]?.label]}
                 contentStyle={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #475569',
                   borderRadius: 8,
                   fontSize: 12,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                  color: '#f8fafc',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
                 }}
+                itemStyle={{ color: '#f8fafc' }}
+                labelStyle={{ color: '#94a3b8' }}
               />
               <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                 {chartData.map((entry, index) => (
@@ -364,14 +367,14 @@ export default function DigitalTwinCards({
         </div>
 
         <div className="dt-donut-layout">
-          <div className="dt-donut-chart" style={{ width: 110, height: 110 }}>
+          <div className="dt-donut-chart" style={{ width: 90, height: 90 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={distributionData}
                   dataKey="value"
-                  innerRadius={36}
-                  outerRadius={50}
+                  innerRadius={28}
+                  outerRadius={42}
                   paddingAngle={3}
                   stroke="none"
                   isAnimationActive={false}
@@ -400,13 +403,13 @@ export default function DigitalTwinCards({
         </div>
       </section>
 
-      <details className="history-table-details" style={{ margin: '12px 4px 4px', borderTop: '1px solid #e2e8f0' }}>
-        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#0284c7', padding: '8px 0' }}>
+      <details className="history-table-details" style={{ margin: '12px 4px 4px', borderTop: '1px solid #334155' }}>
+        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#38bdf8', padding: '8px 0' }}>
           View recent readings as a table
         </summary>
         <div className="table-wrap" style={{ maxHeight: 180, overflowY: 'auto' }}>
           <table className="data-table" style={{ width: '100%', fontSize: 11 }}>
-            <caption style={{ textAlign: 'left', padding: '4px 0', color: '#64748b' }}>
+            <caption style={{ textAlign: 'left', padding: '4px 0', color: '#94a3b8' }}>
               Latest telemetry readings for {meta.name}
             </caption>
             <thead>
